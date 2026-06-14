@@ -1,0 +1,25 @@
+.DS_Store
+deploy/.DS_Store
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Supabase local/linking cache
+supabase/.temp/
+
+# Original imported scratch/reference files
+work/
+
+# Dependencies and build output if this becomes a full app
+node_modules/
+dist/
+build/
+.netlify/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

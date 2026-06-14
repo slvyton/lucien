@@ -1,0 +1,13 @@
+project_id = "lbwgzorrogzqgpjhttnx"
+
+[functions.create-member]
+verify_jwt = true
+
+[functions.delete-member]
+verify_jwt = true
+
+[functions.send-newsletter]
+verify_jwt = true
+
+[functions.send-member-invite]
+verify_jwt = true
