@@ -4145,11 +4145,31 @@ function unlockOnboardingPayment(){
   if(status) status.textContent = 'Ready for payment';
   if(saveBtn) saveBtn.textContent = 'Saved';
 }
-function openPaymentPortal(){
+async function openPaymentPortal(){
   const status = document.getElementById('onboard-status');
+  const saveBtn = document.getElementById('onboard-save-btn');
   const tier = selectedOnboardingTier();
-  if(status) status.textContent = `Stripe checkout is next to connect for ${tier.tier} at $${tier.price.toLocaleString()} per quarter.`;
-  toast('Payment Portal Next', 'Stripe checkout will open here once the payment function is connected.');
+  if(!tier.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
+  if(status) status.textContent = 'Opening secure checkout…';
+  if(saveBtn) saveBtn.disabled = true;
+  try {
+    const session = await sb.auth.getSession();
+    const jwt = session.data.session?.access_token;
+    if(!jwt) throw new Error('Not signed in');
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwt}` },
+      body: JSON.stringify({ tier: tier.tier })
+    });
+    const data = await res.json();
+    if(!res.ok || !data.url) throw new Error(data.error || 'Could not create checkout session');
+    window.location.href = data.url;
+  } catch(err) {
+    const msg = err instanceof Error ? err.message : 'Checkout failed';
+    if(status) status.textContent = msg;
+    if(saveBtn) saveBtn.disabled = false;
+    toast('Checkout Error', msg);
+  }
 }
 function openAcceptedOnboarding(){
   const overlay = document.getElementById('accepted-onboarding');
@@ -4649,6 +4669,20 @@ document.getElementById('setup-pass-confirm').addEventListener('keydown', e=>{
   if(e.key === 'Enter') completeInviteSetup();
 });
 document.querySelectorAll('input[name="onboarding-tier"]').forEach(input => input.addEventListener('change', updateOnboardingPaymentSummary));
+
+// Handle Stripe return
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  if(params.get('payment') === 'success'){
+    const tier = params.get('tier') || 'member';
+    setTimeout(() => toast('Welcome to LUCIEN', `Your ${tier} membership is confirmed. Welcome to the society.`), 800);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+  if(params.get('payment') === 'cancelled'){
+    setTimeout(() => toast('Checkout Cancelled', 'Your membership was not charged. You can complete payment when ready.'), 800);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+})();
 openPublicReferral();
 initializeAcceptedOnboarding();
 </script>
