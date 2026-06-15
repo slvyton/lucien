@@ -1160,7 +1160,7 @@ body.portal-open{overflow:auto}
   .mobile-nav-right{display:flex;align-items:center;gap:12px}
   .mobile-avatar{display:flex}
   /* content */
-  .portal-content{padding:28px 16px 60px}
+  .portal-content{padding:104px 16px 60px}
   /* dashboard */
   .dash-welcome h1{font-size:22px}
   .dash-welcome p{font-size:17px}
@@ -1249,7 +1249,9 @@ body.portal-open{overflow:auto}
 .hero-unit{font-family:'Montserrat',sans-serif;font-size:11px;font-weight:300;letter-spacing:0.34em;text-transform:uppercase;color:var(--ivory-dim);opacity:0.7}
 .hero-title{font-family:'Cinzel',serif;font-size:24px;font-weight:400;letter-spacing:0.09em;color:var(--ivory);margin-bottom:9px}
 .hero-sub{font-family:'Cormorant Garamond',serif;font-size:18px;font-weight:300;font-style:italic;color:var(--ivory-dim);opacity:0.8}
-.hero-line{width:64px;height:1px;margin:28px auto 0;background:linear-gradient(to right,transparent,var(--gold),transparent);animation:heroBreath 4.2s ease-in-out infinite}
+.hero-line{width:64px;height:1px;margin:22px auto 22px;background:linear-gradient(to right,transparent,var(--gold),transparent);animation:heroBreath 4.2s ease-in-out infinite}
+.hero-cta{display:inline-block;border:1px solid rgba(200,168,107,0.45);color:var(--gold);font-family:'Montserrat',sans-serif;font-size:8px;font-weight:300;letter-spacing:0.3em;text-transform:uppercase;padding:11px 28px;cursor:pointer;background:transparent;transition:border-color 0.2s,background 0.2s}
+.hero-cta:hover{border-color:var(--gold);background:rgba(200,168,107,0.07)}
 @keyframes heroFade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @keyframes heroBreath{0%,100%{opacity:0.3;transform:scaleX(0.65)}50%{opacity:0.9;transform:scaleX(1)}}
 
@@ -1763,7 +1765,7 @@ body{
           <div class="tier-matrix-row"><div class="tier-matrix-cell tier-matrix-feature">Curated Introductions</div><div class="tier-matrix-cell"><span class="tier-check">Access</span></div><div class="tier-matrix-cell"><span class="tier-check">Priority</span></div></div>
           <div class="tier-matrix-row"><div class="tier-matrix-cell tier-matrix-feature">Partner Benefits</div><div class="tier-matrix-cell"><span class="tier-check">Access</span></div><div class="tier-matrix-cell"><span class="tier-check">Priority</span></div></div>
           <div class="tier-matrix-row"><div class="tier-matrix-cell tier-matrix-feature">Retreat Access</div><div class="tier-matrix-cell"><span class="tier-muted">Access after Emerald pre-booking</span></div><div class="tier-matrix-cell"><span class="tier-check">Pre-booking access before general member release</span></div></div>
-          <div class="tier-matrix-row"><div class="tier-matrix-cell tier-matrix-feature">Retreat Pricing</div><div class="tier-matrix-cell"><span class="tier-emphasis">Discounted member rate</span></div><div class="tier-matrix-cell"><span class="tier-emphasis">One retreat included per year · discounted +1 rate</span></div></div>
+          <div class="tier-matrix-row"><div class="tier-matrix-cell tier-matrix-feature">Retreat Pricing</div><div class="tier-matrix-cell"><span class="tier-emphasis">Discounted member rate</span></div><div class="tier-matrix-cell"><span class="tier-emphasis">One retreat included per year<br>· discounted +1 rate</span></div></div>
         </div>
         <div class="application-form-grid">
           <div class="form-row"><label>Name</label><input id="public-ref-name" placeholder="Your full name"></div>
@@ -3227,11 +3229,22 @@ function openNotificationItem(id){
   const row = notificationRows().find(item => item.id === id);
   if(!row) return;
   setNotificationRead(id, true);
-  if(row.eventId && getEvent(row.eventId)){
-    openEvent(row.eventId);
-  }else{
-    renderNotificationCenter();
-  }
+  updateNotificationBadges();
+  const e = row.eventId ? getEvent(row.eventId) : null;
+  const eventLink = e ? `<button class="hero-cta" style="margin-top:18px" onclick="openEvent('${escAttr(e.id)}');closeNotificationDetail()">${esc(e.title)} →</button>` : '';
+  document.getElementById('evp-content').innerHTML = `
+    <div class="evp-header notification-hero">
+      <span class="evp-status">Notification</span>
+      <div class="evp-title">${esc(row.title)}</div>
+      <div class="evp-venue">${esc(row.body)}</div>
+      ${eventLink}
+    </div>
+    <div class="evp-body notification-body">
+      <button class="notice-action" style="margin-bottom:0" onclick="closeNotificationDetail()">← Back to Notifications</button>
+    </div>`;
+}
+function closeNotificationDetail(){
+  renderNotificationCenter();
 }
 function openNotificationCenter(){
   notificationView = 'latest';
@@ -3385,7 +3398,8 @@ function buildDashHero(){
     <div class="hero-count"><span class="hero-num">${esc(days)}</span><span class="hero-unit">${esc(countLabel)}</span></div>
     <div class="hero-title">${esc(title)}</div>
     <div class="hero-sub">${esc(subtitle)}</div>
-    <div class="hero-line"></div>`;
+    <div class="hero-line"></div>
+    ${e ? `<button class="hero-cta" onclick="openEvent('${e.id}')">View Event</button>` : ''}`;
   const dash = document.getElementById('p-dashboard');
   dash.classList.remove('season-coastal','season-candlelit','season-alpine');
   const settingSeason = ['season-coastal','season-candlelit','season-alpine'].includes(setting.season) ? setting.season : '';
