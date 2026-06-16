@@ -4085,17 +4085,30 @@ async function submitPublicReferral(){
     return;
     }
   }
-  status.textContent = 'Received. The concierge will review this introduction.';
+  status.textContent = 'Received.';
   const card = document.querySelector('#public-referral .public-referral-card');
   if(card){
+    // Build tier label for display
+    const tierLabel = tier === 'Emerald' ? 'Emerald · $2,500 / quarter' : 'Sage · $550 / quarter';
     card.innerHTML = `
-      <span class="p-label">Request Received</span>
-      <div class="p-title" style="font-size:28px">Thank You</div>
+      <span class="p-label">Application Received</span>
+      <div class="p-title" style="font-size:28px">One Last Step</div>
       <div class="p-rule"></div>
-      <p class="p-body" style="margin-bottom:24px">Your application has reached the LUCIEN concierge. If there is alignment, the next step will arrive by private email.</p>
+      <p class="p-body" style="margin-bottom:20px">Your application is with the concierge. To hold your place, please save a payment method now — <strong style="color:var(--gold)">you will not be charged</strong> until your membership is approved.</p>
+      <div class="payment-placeholder" style="margin-bottom:20px">
+        <div class="payment-line">
+          <div>
+            <div class="p-label">Selected Membership</div>
+            <div class="payment-amount">${tierLabel}</div>
+          </div>
+          <span class="status-tag pending">Pending Approval</span>
+        </div>
+      </div>
       <div class="actions" style="display:flex;gap:10px;flex-wrap:wrap">
-        <button class="btn-gold" onclick="closePublicReferral()">Close</button>
-      </div>`;
+        <button class="btn-gold" id="save-card-btn" onclick="openCardSetup('${tier}', '${code}')">Save Payment Method →</button>
+        <button class="btn-ghost" onclick="closePublicReferral()">Skip for Now</button>
+      </div>
+      <p class="p-body" style="margin-top:14px;font-size:11px;opacity:0.5">Skipping means you may need to provide payment details again when approved.</p>`;
   }else{
     status.textContent = 'Received. The concierge will review your introduction.';
   }
@@ -4168,6 +4181,31 @@ function unlockOnboardingPayment(){
   panel?.classList.add('active');
   if(status) status.textContent = 'Ready for payment';
   if(saveBtn) saveBtn.textContent = 'Saved';
+}
+async function openCardSetup(tier, referralCode){
+  if(!currentSession){
+    toast('Sign In Required', 'Please create your account first — check your email for a confirmation link.');
+    return;
+  }
+  const btn = document.getElementById('save-card-btn');
+  if(btn){ btn.disabled = true; btn.textContent = 'Redirecting…'; }
+  try{
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-setup-session`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${currentSession.access_token}`,
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ tier: tier || 'Sage', referral_code: referralCode || '' })
+    });
+    const json = await res.json();
+    if(json.error || !json.url){ throw new Error(json.error || 'Unable to start setup'); }
+    window.location.href = json.url;
+  }catch(err){
+    toast('Error', err.message || 'Unable to start card setup.');
+    if(btn){ btn.disabled = false; btn.textContent = 'Save Payment Method →'; }
+  }
 }
 async function openPaymentPortal(){
   const status = document.getElementById('onboard-status');
@@ -4574,6 +4612,7 @@ async function completeInviteSetup(){
 }
 
 async function doLogin(){
+  if(inviteSetupMode){ doInviteSetup(); return; }
   if(!sb){
     setLoginStatus('Supabase is unavailable.');
     return;
@@ -4604,6 +4643,45 @@ async function doLogin(){
       console.error(err);
       ls.style.opacity = '';
       setLoginStatus(err.message || 'Unable to load member profile.');
+    }
+  }, 700);
+}
+async function doInviteSetup(){
+  if(!sb || !currentSession){
+    setLoginStatus('Your invitation session has expired. Please request a new invite from your concierge.');
+    return;
+  }
+  const pass = document.getElementById('setup-pass').value;
+  const confirm = document.getElementById('setup-pass-confirm').value;
+  if(!pass || pass.length < 8){
+    setLoginStatus('Password must be at least 8 characters.');
+    return;
+  }
+  if(pass !== confirm){
+    setLoginStatus('Passwords do not match.');
+    return;
+  }
+  setLoginStatus('Setting up your access...');
+  const { error } = await sb.auth.updateUser({ password: pass });
+  if(error){
+    setLoginStatus(error.message || 'Unable to set password. Please request a fresh invite.');
+    return;
+  }
+  // Password set — now show the accepted-onboarding form (pre-approved path → payment)
+  const ls = document.getElementById('login-screen');
+  ls.style.opacity = 0;
+  setTimeout(async ()=>{
+    try{
+      await loadPortalData();
+      await loadMemberData();
+      ls.style.opacity = '';
+      ls.classList.remove('active');
+      setInviteSetupMode(false);
+      openAcceptedOnboarding();
+    }catch(err){
+      console.error(err);
+      ls.style.opacity = '';
+      setLoginStatus(err.message || 'Unable to load your profile.');
     }
   }, 700);
 }
@@ -4704,6 +4782,15 @@ document.querySelectorAll('input[name="onboarding-tier"]').forEach(input => inpu
   }
   if(params.get('payment') === 'cancelled'){
     setTimeout(() => toast('Checkout Cancelled', 'Your membership was not charged. You can complete payment when ready.'), 800);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+  if(params.get('setup') === 'success'){
+    const savedTier = params.get('tier') || 'Sage';
+    setTimeout(() => toast('Payment Method Saved', `Your ${savedTier} membership is pending concierge approval. You will only be charged once approved.`), 800);
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+  if(params.get('setup') === 'cancelled'){
+    setTimeout(() => toast('Setup Cancelled', 'No card was saved. You can add a payment method later.'), 800);
     window.history.replaceState({}, '', window.location.pathname);
   }
 })();

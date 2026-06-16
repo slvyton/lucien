@@ -1343,6 +1343,7 @@
             <div class="actions" style="margin-top:16px">
               <button class="btn" onclick="switchTab('members'); editMember('${member.id}')">Edit Member</button>
               <button class="btn" onclick="sendInvite('${member.id}')">Resend Invite</button>
+              ${(membership.status === 'pending' || membership.billing_status === 'card_saved' || onboarding?.payment_status === 'card_saved') ? `<button class="btn-gold" onclick="approveAndCharge('${member.id}')">Approve &amp; Charge</button>` : ''}
             </div>
           </div>
           <div class="dossier-card">
@@ -2563,6 +2564,38 @@
         renderMembers();
       }
       flash('Invite Sent');
+    }
+
+    async function approveAndCharge(id){
+      let member = state.members.find(m => m.id === id);
+      if(!member){
+        await loadMembers();
+        member = state.members.find(m => m.id === id);
+      }
+      const membership = state.memberships?.find(m => m.profile_id === id);
+      const tier = membership?.tier || 'Sage';
+      const tierLabel = tier === 'Emerald' ? 'Emerald ($2,500)' : 'Sage ($550)';
+      if(!await lucienConfirm(
+        'Approve & Charge Member?',
+        `This will charge the saved card on file for ${member?.display_name || 'this member'} — ${tierLabel} quarterly membership. The card will be charged immediately.`,
+        { confirmLabel: 'Charge Now' }
+      )) return;
+      flash('Processing payment...');
+      try{
+        const { data, error } = await sb.functions.invoke('charge-member', {
+          body: { profile_id: id, tier }
+        });
+        if(error){
+          const detail = await functionErrorMessage(error);
+          return alert(`Charge failed: ${detail}`);
+        }
+        if(data?.error) return alert(`Charge failed: ${data.error}`);
+        await Promise.all([loadMembers(), loadRequests()]);
+        renderMembers();
+        flash('Charged — membership activated');
+      }catch(err){
+        alert(`Charge failed: ${err.message}`);
+      }
     }
 
     async function functionErrorMessage(error){
