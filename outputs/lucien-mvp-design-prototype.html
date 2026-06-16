@@ -5004,10 +5004,10 @@ async function openLucienPayModal({ mode, tier, isTrial = false }){
 
     if(mode === 'setup'){
       const trialNote = isTrial
-        ? 'Your card is saved securely today. Your first charge will not occur until your 6-month trial period ends.'
+        ? 'Your payment method is authorized now and held securely. Your first quarterly charge will be collected in 6 months.'
         : 'Your card will be saved securely. You will not be charged until your membership is approved.';
       if(modeNote) modeNote.textContent = trialNote;
-      if(submitBtn) submitBtn.textContent = isTrial ? 'Begin Trial' : 'Save Card';
+      if(submitBtn) submitBtn.textContent = isTrial ? 'Confirm & Authorize' : 'Save Card';
     } else {
       if(modeNote) modeNote.textContent = '';
       if(submitBtn) submitBtn.textContent = 'Complete Enrollment';
@@ -5030,6 +5030,11 @@ async function openLucienPayModal({ mode, tier, isTrial = false }){
 
 async function lpmSubmit(){
   if(!_lpmStripe || !_lpmElements) return;
+  const termsCheck = document.getElementById('lpm-terms-check');
+  if(termsCheck && !termsCheck.checked){
+    document.getElementById('lpm-status').textContent = 'Please agree to the membership terms to continue.';
+    return;
+  }
   const submitBtn = document.getElementById('lpm-submit-btn');
   const statusEl = document.getElementById('lpm-status');
   if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Processing…'; }
@@ -5079,6 +5084,15 @@ function closeLucienPayModal(){
   _lpmElements = null;
   const elemDiv = document.getElementById('lpm-elements');
   if(elemDiv) elemDiv.innerHTML = '';
+  // Reset terms checkbox for next open
+  const tc = document.getElementById('lpm-terms-check');
+  if(tc) tc.checked = false;
+}
+function openLpmTerms(){
+  document.getElementById('lpm-terms-modal')?.classList.add('active');
+}
+function closeLpmTerms(){
+  document.getElementById('lpm-terms-modal')?.classList.remove('active');
 }
 // ══════════════════════════════════════════════════════════════════════
 
@@ -5102,10 +5116,83 @@ function closeLucienPayModal(){
       <div class="lpm-label" id="lpm-card-label">Payment Details</div>
       <div class="lpm-mode-note" id="lpm-mode-note"></div>
       <div id="lpm-elements"></div>
-      <button class="lpm-submit" id="lpm-submit-btn" onclick="lpmSubmit()">Complete Enrollment</button>
+      <div id="lpm-terms-wrap" style="margin-top:18px;padding:14px;border:1px solid rgba(200,168,107,0.12);background:rgba(200,168,107,0.04)">
+        <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+          <input type="checkbox" id="lpm-terms-check" style="margin-top:3px;accent-color:#c8a86b;flex-shrink:0">
+          <span style="font-family:'Montserrat',sans-serif;font-size:10px;letter-spacing:0.06em;color:rgba(196,186,168,0.65);line-height:1.7">
+            I agree to the <a href="/privacy" target="_blank" style="color:var(--gold)">Privacy Policy</a> and <button type="button" onclick="openLpmTerms()" style="background:none;border:none;color:var(--gold);font-family:'Montserrat',sans-serif;font-size:10px;letter-spacing:0.06em;cursor:pointer;padding:0;text-decoration:underline">Membership Terms</button>. I authorize LUCIEN LLC to charge my payment method quarterly for membership access. I understand that events and programming are subject to change and are not guaranteed.
+          </span>
+        </label>
+      </div>
+      <button class="lpm-submit" id="lpm-submit-btn" onclick="lpmSubmit()" style="margin-top:12px">Complete Enrollment</button>
       <button class="lpm-cancel" onclick="closeLucienPayModal()">Cancel</button>
       <div class="lpm-status" id="lpm-status"></div>
       <div class="lpm-secure">🔒 &nbsp; Secured by Stripe &nbsp;·&nbsp; PCI Compliant</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ MEMBERSHIP TERMS MODAL ══ -->
+<div id="lpm-terms-modal" style="position:fixed;inset:0;z-index:9100;display:none;align-items:center;justify-content:center;background:rgba(5,12,8,0.96);backdrop-filter:blur(10px)">
+  <style>
+    #lpm-terms-modal.active{display:flex}
+    .terms-card{background:#0d1a12;border:1px solid rgba(200,168,107,0.22);width:100%;max-width:560px;margin:20px;max-height:85vh;display:flex;flex-direction:column}
+    .terms-head{padding:24px 28px 18px;border-bottom:1px solid rgba(200,168,107,0.1);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+    .terms-title{font-family:'Cinzel',serif;font-size:14px;letter-spacing:0.2em;color:var(--ivory)}
+    .terms-close{background:none;border:none;color:rgba(200,168,107,0.4);font-size:18px;cursor:pointer;padding:4px 8px;line-height:1}
+    .terms-close:hover{color:var(--gold)}
+    .terms-body{padding:24px 28px 28px;overflow-y:auto;font-family:'Cormorant Garamond',serif;font-size:15px;line-height:1.85;color:rgba(196,186,168,0.75)}
+    .terms-body h3{font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:0.28em;text-transform:uppercase;color:var(--gold);margin:24px 0 10px}
+    .terms-body h3:first-child{margin-top:0}
+    .terms-body p{margin-bottom:14px}
+    .terms-foot{padding:16px 28px 20px;border-top:1px solid rgba(200,168,107,0.1);flex-shrink:0}
+    .terms-accept{width:100%;padding:13px;background:var(--gold);color:#0a1410;font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;letter-spacing:0.28em;text-transform:uppercase;border:none;cursor:pointer}
+    @media(max-width:600px){.terms-card{max-width:100%;margin:0;max-height:92vh;border-left:none;border-right:none;border-bottom:none;align-self:flex-end}}
+  </style>
+  <div class="terms-card">
+    <div class="terms-head">
+      <div class="terms-title">Membership Terms</div>
+      <button class="terms-close" onclick="closeLpmTerms()">✕</button>
+    </div>
+    <div class="terms-body">
+      <h3>Agreement</h3>
+      <p>By authorizing payment, you ("Member") enter into a membership agreement with <strong style="color:var(--ivory)">LUCIEN LLC</strong> ("LUCIEN," "we," or "us") and agree to the following terms.</p>
+
+      <h3>Membership & Billing</h3>
+      <p>Membership is billed quarterly. Your payment method on file will be charged at the rate corresponding to your selected membership tier (Sage: $550/quarter; Emerald: $2,500/quarter) at the start of each billing period. Membership continues until cancelled.</p>
+      <p>For members on an introductory authorization hold, the first charge will occur at the end of the stated introductory period. No charge is made until that date.</p>
+
+      <h3>Cancellation</h3>
+      <p>You may cancel your membership at any time by contacting the concierge. Cancellations take effect at the end of the current billing quarter. No partial-quarter refunds are issued except at LUCIEN's sole discretion.</p>
+
+      <h3>Events & Programming</h3>
+      <p>Membership grants access to LUCIEN's event calendar, directory, concierge service, and partner benefits. Events, retreats, and programming are curated by LUCIEN and subject to change, cancellation, or rescheduling without notice. Specific events are not guaranteed as a condition of membership. LUCIEN is not liable for costs incurred in connection with cancelled or rescheduled events, including travel or accommodation.</p>
+
+      <h3>RSVP & Attendance</h3>
+      <p>Event attendance requires an accepted RSVP. Capacity is limited. LUCIEN reserves the right to decline or revoke attendance at any event at its discretion. Guest policies vary per event and are set by LUCIEN.</p>
+
+      <h3>Member Conduct</h3>
+      <p>Members are expected to conduct themselves with discretion and respect. LUCIEN reserves the right to revoke membership without refund for conduct that is disruptive, disrespectful, or inconsistent with the values of the society. What happens within LUCIEN stays within LUCIEN.</p>
+
+      <h3>Directory & Privacy</h3>
+      <p>Member information shared with LUCIEN is held in confidence. Your profile may appear in the private member directory, visible only to active members. You may opt out of directory listing at any time. LUCIEN does not sell member data. See our <a href="/privacy" target="_blank" style="color:var(--gold)">Privacy Policy</a> for full details.</p>
+
+      <h3>No Guarantees</h3>
+      <p>LUCIEN makes no representations or warranties regarding introductions, business outcomes, or results from membership. The society is a social and experiential membership — commercial results are incidental and not promised.</p>
+
+      <h3>Limitation of Liability</h3>
+      <p>To the fullest extent permitted by law, LUCIEN LLC's liability to any member is limited to the amount paid in the most recent billing quarter. LUCIEN is not liable for indirect, incidental, or consequential damages of any kind.</p>
+
+      <h3>Governing Law</h3>
+      <p>These terms are governed by the laws of the State of New York. Any disputes shall be resolved through binding arbitration on an individual basis.</p>
+
+      <h3>Changes to Terms</h3>
+      <p>LUCIEN may update these terms with 30 days' written notice to active members. Continued membership after notice constitutes acceptance.</p>
+
+      <p style="margin-top:24px;font-size:12px;opacity:0.45">Last updated: June 2026 &nbsp;·&nbsp; LUCIEN LLC</p>
+    </div>
+    <div class="terms-foot">
+      <button class="terms-accept" onclick="(function(){document.getElementById('lpm-terms-check').checked=true;closeLpmTerms();})()">I Understand — Close</button>
     </div>
   </div>
 </div>
