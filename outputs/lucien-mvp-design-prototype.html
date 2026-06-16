@@ -1593,6 +1593,15 @@ body{
   background:#0d1a12;border:1px solid rgba(200,168,107,0.22);
   width:100%;max-width:480px;margin:20px;
   display:flex;flex-direction:column;
+  max-height:calc(100vh - 40px);overflow-y:auto;
+}
+#lucien-pay-modal{align-items:flex-start;padding-top:env(safe-area-inset-top,0);}
+@media(max-width:600px){
+  #lucien-pay-modal{align-items:flex-end;padding:0;}
+  .lpm-card{max-width:100%;margin:0;border-left:none;border-right:none;border-bottom:none;
+    border-radius:0;max-height:92vh;border-top:1px solid rgba(200,168,107,0.3);}
+  .lpm-body{padding:20px 20px 32px;}
+  .lpm-header{padding:20px 20px 16px;}
 }
 .lpm-header{
   padding:32px 36px 24px;border-bottom:1px solid rgba(200,168,107,0.1);
@@ -1735,6 +1744,7 @@ body{
     <button class="login-btn" id="login-action" onclick="doLogin()">Enter</button>
     <div class="login-foot" id="login-status"></div>
     <button class="login-alt" id="login-alt-action" type="button" onclick="useExistingAccountForApplication()" style="display:none">Already have an account? Sign in to finish</button>
+    <button class="login-alt" id="login-reset-btn" type="button" onclick="doPasswordReset()" style="margin-top:6px">Forgot password?</button>
   </div>
 </div>
 
@@ -1746,10 +1756,10 @@ body{
         <div class="application-brand-name">LUCIEN</div>
       </div>
       <section class="application-hero">
-        <span class="application-kicker">By Member Referral</span>
-        <div class="p-title">The Art of Connection</div>
-        <p class="p-body">LUCIEN is a private members society built around curated events, intimate retreats, meaningful relationships, and elevated hospitality.</p>
-        <p class="p-body" style="font-style:italic;opacity:0.72">Membership is intentionally limited and reviewed privately.</p>
+        <span class="application-kicker" id="app-offer-kicker">By Member Referral</span>
+        <div class="p-title" id="app-offer-title">The Art of Connection</div>
+        <p class="p-body" id="app-offer-body">LUCIEN is a private members society built around curated events, intimate retreats, meaningful relationships, and elevated hospitality.</p>
+        <p class="p-body" style="font-style:italic;opacity:0.72" id="app-offer-sub">Membership is intentionally limited and reviewed privately.</p>
         <button class="btn-gold" onclick="document.getElementById('public-application-form').scrollIntoView({behavior:'smooth',block:'start'})">Apply for Consideration</button>
       </section>
 
@@ -1856,13 +1866,11 @@ body{
           <div class="form-row"><label>Phone</label><input id="public-ref-phone" placeholder="Optional"></div>
           <div class="form-row"><label>City / Residence</label><input id="public-ref-city" placeholder="Primary city"></div>
           <div class="form-row"><label>Profession / Company</label><input id="public-ref-profession" placeholder="Company, role, or profession"></div>
-          <div class="form-row"><label>Membership Interest</label><select id="public-ref-tier"><option value="Sage">Sage · $550 / quarter</option><option value="Emerald">Emerald · $2,500 / quarter</option></select></div>
+          <div class="form-row" id="app-tier-row"><label>Membership Interest</label><select id="public-ref-tier"><option value="Sage">Sage · $550 / quarter</option><option value="Emerald">Emerald · $2,500 / quarter</option></select></div>
+          <div class="form-row" id="app-tier-display" style="display:none"><label>Your Membership</label><div id="app-tier-display-val" style="font-family:'Cinzel',serif;font-size:15px;letter-spacing:0.08em;color:var(--gold);padding:10px 0"></div></div>
         </div>
         <div class="form-row"><label>Why LUCIEN?</label><textarea id="public-ref-note" placeholder="A short note on who you are and why LUCIEN may be a fit."></textarea></div>
-        <div class="payment-placeholder active" style="margin-bottom:18px">
-          <strong>Payment Authorization Later</strong>
-          <p class="p-body" style="margin:8px 0 0">When Stripe is connected, this flow should collect payment details or authorize membership funds, then capture only after LUCIEN approves the application.</p>
-        </div>
+
         <div class="actions" style="display:flex;gap:10px;flex-wrap:wrap">
           <button class="btn-gold" id="public-ref-submit" onclick="submitPublicReferral()">Apply for Consideration</button>
           <button class="btn-outline" onclick="closePublicReferral()">Close</button>
@@ -3314,7 +3322,7 @@ function openNotificationItem(id){
   setNotificationRead(id, true);
   updateNotificationBadges();
   const e = row.eventId ? getEvent(row.eventId) : null;
-  const eventLink = e ? `<button class="hero-cta" style="margin-top:18px" onclick="openEvent('${escAttr(e.id)}');closeNotificationDetail()">${esc(e.title)} →</button>` : '';
+  const eventLink = e ? `<button class="hero-cta" style="margin-top:18px" onclick="openEventFromNotification('${escAttr(e.id)}')">${esc(e.title)} →</button>` : '';
   document.getElementById('evp-content').innerHTML = `
     <div class="evp-header notification-hero">
       <span class="evp-status">Notification</span>
@@ -3328,6 +3336,12 @@ function openNotificationItem(id){
 }
 function closeNotificationDetail(){
   renderNotificationCenter();
+}
+function openEventFromNotification(id){
+  // Exit notification mode, then open the event
+  const panel = document.getElementById('event-panel');
+  panel?.classList.remove('notification-center-panel');
+  openEvent(id);
 }
 function openNotificationCenter(){
   notificationView = 'latest';
@@ -4072,10 +4086,50 @@ function hydrateApplicationBrand(){
 function openPublicReferral(){
   const code = referralParam();
   if(!code) return;
-  // Skip entry screen — go straight to application
   const entry = document.getElementById('entry');
   if(entry) entry.style.display = 'none';
   hydrateApplicationBrand();
+
+  // Read tier/comped params set by admin when sharing the link
+  const params = new URLSearchParams(location.search);
+  const offerTier = params.get('tier') || '';  // Sage | Emerald | Comped
+  const offerLabel = offerTier === 'Sage' ? 'Sage Membership' :
+                     offerTier === 'Emerald' ? 'Emerald Membership' :
+                     offerTier === 'Comped' ? 'Complimentary Membership' : '';
+
+  // Update hero messaging
+  const kicker = document.getElementById('app-offer-kicker');
+  const title  = document.getElementById('app-offer-title');
+  const body   = document.getElementById('app-offer-body');
+  const sub    = document.getElementById('app-offer-sub');
+  if(offerLabel){
+    if(kicker) kicker.textContent = 'Private Invitation';
+    if(title)  title.textContent  = `You've Been Offered a ${offerLabel}`;
+    if(body)   body.textContent   = 'Your invitation is being held. Complete the form below to confirm your place in LUCIEN.';
+    if(sub)    sub.textContent    = 'This offer is personal to you and was arranged privately.';
+  } else {
+    if(kicker) kicker.textContent = 'By Member Referral';
+    if(title)  title.textContent  = 'The Art of Connection';
+    if(body)   body.textContent   = 'LUCIEN is a private members society built around curated events, intimate retreats, meaningful relationships, and elevated hospitality.';
+    if(sub)    sub.textContent    = 'Membership is intentionally limited and reviewed privately.';
+  }
+
+  // Show/hide tier selector
+  const tierRow     = document.getElementById('app-tier-row');
+  const tierDisplay = document.getElementById('app-tier-display');
+  const tierSel     = document.getElementById('public-ref-tier');
+  const tierVal     = document.getElementById('app-tier-display-val');
+  if(offerTier && offerTier !== 'standard'){
+    if(tierRow)     tierRow.style.display = 'none';
+    if(tierDisplay) tierDisplay.style.display = '';
+    const labels = { Sage:'Sage · $550 / quarter', Emerald:'Emerald · $2,500 / quarter', Comped:'Complimentary — No charge' };
+    if(tierVal) tierVal.textContent = labels[offerTier] || offerTier;
+    if(tierSel) tierSel.value = offerTier === 'Comped' ? 'Comped' : offerTier;
+  } else {
+    if(tierRow)     tierRow.style.display = '';
+    if(tierDisplay) tierDisplay.style.display = 'none';
+  }
+
   const overlay = document.getElementById('public-referral');
   if(overlay) overlay.classList.add('active');
 }
@@ -4091,6 +4145,21 @@ async function submitPublicReferral(){
   const profession = document.getElementById('public-ref-profession')?.value.trim() || '';
   const tier = document.getElementById('public-ref-tier')?.value || '';
   const price = tier === 'Emerald' ? 2500 : 550;
+  // Duplicate email check — query Supabase for existing profile/referral with this email
+  if(email && sb){
+    const { data: existing } = await sb.from('profiles').select('id').eq('email', email).maybeSingle();
+    if(existing){
+      const status = document.getElementById('public-ref-status');
+      if(status) status.textContent = 'An account with this email already exists. If you were previously invited, check your email for a login link.';
+      return;
+    }
+    const { data: existingRef } = await sb.from('referrals').select('id,status').eq('candidate_email', email).maybeSingle();
+    if(existingRef){
+      const status = document.getElementById('public-ref-status');
+      if(status) status.textContent = `An application with this email was already received (status: ${existingRef.status}). The concierge will be in touch.`;
+      return;
+    }
+  }
   const baseNote = document.getElementById('public-ref-note').value.trim();
   const note = [
     baseNote,
@@ -4271,7 +4340,8 @@ async function openCardSetup(tier, referralCode){
 async function openPaymentPortal(){
   const tierObj = selectedOnboardingTier();
   if(!tierObj.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
-  await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
+  // 6-month trial: collect card details but don't charge until trial ends
+  await openLucienPayModal({ mode:'setup', tier: tierObj.tier, isTrial: true });
 }
 function openAcceptedOnboarding(){
   const overlay = document.getElementById('accepted-onboarding');
@@ -4651,7 +4721,17 @@ async function completeInviteSetup(){
   }
 }
 
-async function doLogin(){
+async async function doPasswordReset(){
+  const email = document.getElementById('login-email').value.trim();
+  if(!email){ setLoginStatus('Enter your email address first.'); return; }
+  setLoginStatus('Sending reset link…');
+  const { error } = await sb.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + window.location.pathname + '?reset=1'
+  });
+  if(error){ setLoginStatus(error.message || 'Unable to send reset email.'); return; }
+  setLoginStatus('Check your email — a reset link has been sent.');
+}
+function doLogin(){
   if(inviteSetupMode){ doInviteSetup(); return; }
   if(!sb){
     setLoginStatus('Supabase is unavailable.');
@@ -4844,9 +4924,10 @@ let _lpmElements = null;
 let _lpmMode = 'payment';
 let _lpmTier = 'Sage';
 
-async function openLucienPayModal({ mode, tier }){
+async function openLucienPayModal({ mode, tier, isTrial = false }){
   _lpmMode = mode;
   _lpmTier = tier || 'Sage';
+  const _lpmTrial = isTrial;
 
   const modal = document.getElementById('lucien-pay-modal');
   const tierName = document.getElementById('lpm-tier-name');
@@ -4916,8 +4997,11 @@ async function openLucienPayModal({ mode, tier }){
     };
 
     if(mode === 'setup'){
-      if(modeNote) modeNote.textContent = 'Your card will be saved securely. You will not be charged until your membership is approved.';
-      if(submitBtn) submitBtn.textContent = 'Save Card';
+      const trialNote = isTrial
+        ? 'Your card is saved securely today. Your first charge will not occur until your 6-month trial period ends.'
+        : 'Your card will be saved securely. You will not be charged until your membership is approved.';
+      if(modeNote) modeNote.textContent = trialNote;
+      if(submitBtn) submitBtn.textContent = isTrial ? 'Begin Trial' : 'Save Card';
     } else {
       if(modeNote) modeNote.textContent = '';
       if(submitBtn) submitBtn.textContent = 'Complete Enrollment';
