@@ -6,6 +6,7 @@
 <title>LUCIEN</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Montserrat:wght@200;300;400;500&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://js.stripe.com/v3/"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -1580,6 +1581,84 @@ body{
   .portal-nav{background:rgba(12,24,18,0.74)}
 }
 
+
+/* ── Lucien Payment Modal ── */
+#lucien-pay-modal{
+  position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;
+  background:rgba(5,12,8,0.92);backdrop-filter:blur(8px);
+  opacity:0;pointer-events:none;transition:opacity 0.35s ease;
+}
+#lucien-pay-modal.active{opacity:1;pointer-events:auto;}
+.lpm-card{
+  background:#0d1a12;border:1px solid rgba(200,168,107,0.22);
+  width:100%;max-width:480px;margin:20px;
+  display:flex;flex-direction:column;
+}
+.lpm-header{
+  padding:32px 36px 24px;border-bottom:1px solid rgba(200,168,107,0.1);
+  text-align:center;
+}
+.lpm-wordmark{
+  font-family:'Cinzel',serif;font-size:14px;letter-spacing:0.38em;
+  color:var(--gold);text-transform:uppercase;margin-bottom:6px;
+}
+.lpm-subtitle{
+  font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:0.28em;
+  text-transform:uppercase;color:rgba(200,168,107,0.4);
+}
+.lpm-body{padding:28px 36px 32px;}
+.lpm-tier{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:24px;padding-bottom:20px;
+  border-bottom:1px solid rgba(200,168,107,0.1);
+}
+.lpm-tier-name{
+  font-family:'Cinzel',serif;font-size:20px;letter-spacing:0.08em;color:var(--ivory);
+}
+.lpm-tier-price{
+  font-family:'Montserrat',sans-serif;font-size:11px;letter-spacing:0.14em;
+  color:var(--gold);text-align:right;
+}
+.lpm-tier-cycle{
+  font-size:8px;letter-spacing:0.2em;text-transform:uppercase;
+  color:rgba(200,168,107,0.45);margin-top:2px;
+}
+.lpm-label{
+  font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:0.26em;
+  text-transform:uppercase;color:rgba(200,168,107,0.5);margin-bottom:10px;
+}
+.lpm-mode-note{
+  font-family:'Montserrat',sans-serif;font-size:10px;letter-spacing:0.08em;
+  color:rgba(196,186,168,0.5);margin-bottom:18px;line-height:1.7;
+}
+#lpm-elements{min-height:48px;}
+.lpm-submit{
+  width:100%;margin-top:20px;padding:15px;
+  background:var(--gold);color:#0a1410;
+  font-family:'Montserrat',sans-serif;font-size:9px;font-weight:700;letter-spacing:0.3em;
+  text-transform:uppercase;border:none;cursor:pointer;
+  transition:opacity 0.2s;
+}
+.lpm-submit:hover{opacity:0.88;}
+.lpm-submit:disabled{opacity:0.45;cursor:default;}
+.lpm-cancel{
+  width:100%;margin-top:10px;padding:10px;
+  background:transparent;border:none;cursor:pointer;
+  font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:0.22em;
+  text-transform:uppercase;color:rgba(196,186,168,0.35);
+  transition:color 0.2s;
+}
+.lpm-cancel:hover{color:rgba(196,186,168,0.65);}
+.lpm-status{
+  margin-top:12px;font-family:'Montserrat',sans-serif;font-size:10px;
+  letter-spacing:0.08em;color:rgba(196,186,168,0.55);text-align:center;min-height:16px;
+}
+.lpm-secure{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  margin-top:16px;padding-top:16px;border-top:1px solid rgba(200,168,107,0.08);
+  font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:0.18em;
+  text-transform:uppercase;color:rgba(196,186,168,0.25);
+}
 </style>
 </head>
 <body>
@@ -4184,54 +4263,15 @@ function unlockOnboardingPayment(){
 }
 async function openCardSetup(tier, referralCode){
   if(!currentSession){
-    toast('Sign In Required', 'Please create your account first — check your email for a confirmation link.');
+    toast('Sign In Required', 'Please create your account first.');
     return;
   }
-  const btn = document.getElementById('save-card-btn');
-  if(btn){ btn.disabled = true; btn.textContent = 'Redirecting…'; }
-  try{
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-setup-session`, {
-      method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':`Bearer ${currentSession.access_token}`,
-        'apikey': SUPABASE_ANON_KEY
-      },
-      body: JSON.stringify({ tier: tier || 'Sage', referral_code: referralCode || '' })
-    });
-    const json = await res.json();
-    if(json.error || !json.url){ throw new Error(json.error || 'Unable to start setup'); }
-    window.location.href = json.url;
-  }catch(err){
-    toast('Error', err.message || 'Unable to start card setup.');
-    if(btn){ btn.disabled = false; btn.textContent = 'Save Payment Method →'; }
-  }
+  await openLucienPayModal({ mode:'setup', tier: tier || 'Sage' });
 }
 async function openPaymentPortal(){
-  const status = document.getElementById('onboard-status');
-  const saveBtn = document.getElementById('onboard-save-btn');
-  const tier = selectedOnboardingTier();
-  if(!tier.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
-  if(status) status.textContent = 'Opening secure checkout…';
-  if(saveBtn) saveBtn.disabled = true;
-  try {
-    const session = await sb.auth.getSession();
-    const jwt = session.data.session?.access_token;
-    if(!jwt) throw new Error('Not signed in');
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${jwt}` },
-      body: JSON.stringify({ tier: tier.tier })
-    });
-    const data = await res.json();
-    if(!res.ok || !data.url) throw new Error(data.error || 'Could not create checkout session');
-    window.location.href = data.url;
-  } catch(err) {
-    const msg = err instanceof Error ? err.message : 'Checkout failed';
-    if(status) status.textContent = msg;
-    if(saveBtn) saveBtn.disabled = false;
-    toast('Checkout Error', msg);
-  }
+  const tierObj = selectedOnboardingTier();
+  if(!tierObj.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
+  await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
 }
 function openAcceptedOnboarding(){
   const overlay = document.getElementById('accepted-onboarding');
@@ -4796,6 +4836,189 @@ document.querySelectorAll('input[name="onboarding-tier"]').forEach(input => inpu
 })();
 openPublicReferral();
 initializeAcceptedOnboarding();
+
+
+// ══ LUCIEN PAYMENT MODAL ══════════════════════════════════════════════
+let _lpmStripe = null;
+let _lpmElements = null;
+let _lpmMode = 'payment';
+let _lpmTier = 'Sage';
+
+async function openLucienPayModal({ mode, tier }){
+  _lpmMode = mode;
+  _lpmTier = tier || 'Sage';
+
+  const modal = document.getElementById('lucien-pay-modal');
+  const tierName = document.getElementById('lpm-tier-name');
+  const tierPrice = document.getElementById('lpm-tier-price');
+  const cardLabel = document.getElementById('lpm-card-label');
+  const modeNote = document.getElementById('lpm-mode-note');
+  const submitBtn = document.getElementById('lpm-submit-btn');
+  const statusEl = document.getElementById('lpm-status');
+  const elemDiv = document.getElementById('lpm-elements');
+
+  const isSage = _lpmTier === 'Sage';
+  if(tierName) tierName.textContent = _lpmTier;
+  if(tierPrice) tierPrice.textContent = isSage ? '$550' : '$2,500';
+  if(statusEl) statusEl.textContent = 'Loading…';
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Loading…'; }
+  if(elemDiv) elemDiv.innerHTML = '';
+  modal?.classList.add('active');
+
+  try{
+    const jwt = currentSession?.access_token;
+    if(!jwt) throw new Error('Not signed in');
+
+    const fnName = mode === 'setup' ? 'create-setup-intent' : 'create-payment-intent';
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/${fnName}`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${jwt}`,
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ tier: _lpmTier })
+    });
+    const data = await res.json();
+    if(data.error || !data.client_secret) throw new Error(data.error || 'Could not initialise payment');
+
+    _lpmStripe = Stripe(data.publishable_key);
+
+    const appearance = {
+      theme: 'night',
+      variables:{
+        colorPrimary: '#c8a86b',
+        colorBackground: '#0d1a12',
+        colorText: '#e8e2d6',
+        colorDanger: '#e07070',
+        fontFamily: 'Montserrat, sans-serif',
+        borderRadius: '0px',
+        spacingUnit: '5px',
+      },
+      rules:{
+        '.Input':{
+          border:'1px solid rgba(200,168,107,0.25)',
+          backgroundColor:'#0a1410',
+          color:'#e8e2d6',
+        },
+        '.Input:focus':{
+          border:'1px solid rgba(200,168,107,0.6)',
+          boxShadow:'none',
+          outline:'none',
+        },
+        '.Label':{
+          color:'rgba(200,168,107,0.55)',
+          fontSize:'8px',
+          letterSpacing:'0.22em',
+          textTransform:'uppercase',
+        },
+      }
+    };
+
+    if(mode === 'setup'){
+      if(modeNote) modeNote.textContent = 'Your card will be saved securely. You will not be charged until your membership is approved.';
+      if(submitBtn) submitBtn.textContent = 'Save Card';
+    } else {
+      if(modeNote) modeNote.textContent = '';
+      if(submitBtn) submitBtn.textContent = 'Complete Enrollment';
+    }
+
+    _lpmElements = _lpmStripe.elements({ clientSecret: data.client_secret, appearance });
+    const payEl = _lpmElements.create('payment');
+    payEl.mount('#lpm-elements');
+
+    if(statusEl) statusEl.textContent = '';
+    if(submitBtn) submitBtn.disabled = false;
+
+  }catch(err){
+    const msg = err.message || 'Unable to load payment form';
+    if(statusEl) statusEl.textContent = msg;
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Complete Enrollment'; }
+    toast('Payment Error', msg);
+  }
+}
+
+async function lpmSubmit(){
+  if(!_lpmStripe || !_lpmElements) return;
+  const submitBtn = document.getElementById('lpm-submit-btn');
+  const statusEl = document.getElementById('lpm-status');
+  if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = 'Processing…'; }
+  if(statusEl) statusEl.textContent = '';
+
+  try{
+    const returnUrl = `${window.location.origin}${window.location.pathname}?${_lpmMode === 'setup' ? 'setup' : 'payment'}=success&tier=${encodeURIComponent(_lpmTier)}`;
+
+    let result;
+    if(_lpmMode === 'setup'){
+      result = await _lpmStripe.confirmSetup({
+        elements: _lpmElements,
+        confirmParams:{ return_url: returnUrl },
+        redirect: 'if_required'
+      });
+    } else {
+      result = await _lpmStripe.confirmPayment({
+        elements: _lpmElements,
+        confirmParams:{ return_url: returnUrl },
+        redirect: 'if_required'
+      });
+    }
+
+    if(result.error){
+      if(statusEl) statusEl.textContent = result.error.message || 'Payment failed';
+      if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Complete Enrollment'; }
+      return;
+    }
+
+    closeLucienPayModal();
+    if(_lpmMode === 'setup'){
+      toast('Card Saved', 'Your payment method is saved. Your membership will activate once approved.');
+    } else {
+      toast('Welcome to LUCIEN', `Your ${_lpmTier} membership is confirmed.`);
+      await loadMemberData().catch(()=>{});
+    }
+  }catch(err){
+    const msg = err.message || 'Payment failed';
+    if(statusEl) statusEl.textContent = msg;
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Complete Enrollment'; }
+  }
+}
+
+function closeLucienPayModal(){
+  document.getElementById('lucien-pay-modal')?.classList.remove('active');
+  _lpmStripe = null;
+  _lpmElements = null;
+  const elemDiv = document.getElementById('lpm-elements');
+  if(elemDiv) elemDiv.innerHTML = '';
+}
+// ══════════════════════════════════════════════════════════════════════
+
 </script>
+
+<!-- ══ LUCIEN PAYMENT MODAL ══ -->
+<div id="lucien-pay-modal">
+  <div class="lpm-card">
+    <div class="lpm-header">
+      <div class="lpm-wordmark">Lucien</div>
+      <div class="lpm-subtitle">Secure Member Enrollment</div>
+    </div>
+    <div class="lpm-body">
+      <div class="lpm-tier">
+        <div class="lpm-tier-name" id="lpm-tier-name">Sage</div>
+        <div>
+          <div class="lpm-tier-price" id="lpm-tier-price">$550</div>
+          <div class="lpm-tier-cycle" id="lpm-tier-cycle">per quarter</div>
+        </div>
+      </div>
+      <div class="lpm-label" id="lpm-card-label">Payment Details</div>
+      <div class="lpm-mode-note" id="lpm-mode-note"></div>
+      <div id="lpm-elements"></div>
+      <button class="lpm-submit" id="lpm-submit-btn" onclick="lpmSubmit()">Complete Enrollment</button>
+      <button class="lpm-cancel" onclick="closeLucienPayModal()">Cancel</button>
+      <div class="lpm-status" id="lpm-status"></div>
+      <div class="lpm-secure">🔒 &nbsp; Secured by Stripe &nbsp;·&nbsp; PCI Compliant</div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
