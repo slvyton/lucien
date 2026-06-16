@@ -1875,8 +1875,8 @@
     async function confirmPermanentDelete(label){
       const first = await lucienConfirm(`Permanently delete ${label}?`, 'This cannot be undone.', { confirmLabel:'Continue', danger:true, kicker:'Permanent Delete' });
       if(!first) return false;
-      const typed = await lucienPrompt('Second confirmation required', `Type delete to permanently delete ${label}.`, { inputLabel:'Type delete', requiredValue:'delete', confirmLabel:'Delete', danger:true, kicker:'Permanent Delete' });
-      return String(typed || '').trim().toLowerCase() === 'delete';
+      const typed = await lucienPrompt('Second confirmation required', `Type confirm to permanently delete ${label}.`, { inputLabel:'Type confirm', requiredValue:'confirm', confirmLabel:'Delete', danger:true, kicker:'Permanent Delete' });
+      return String(typed || '').trim().toLowerCase() === 'confirm';
     }
 
     function eventDashboardHTML(e){
