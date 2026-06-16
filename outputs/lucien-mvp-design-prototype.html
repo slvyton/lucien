@@ -4490,6 +4490,12 @@ async function submitAcceptedOnboarding(){
     if(status) status.textContent = error.message || 'Unable to save onboarding.';
     return;
   }
+  // Keep memberships table in sync with selected tier
+  await sb.from('memberships').update({
+    tier: tier.tier,
+    quarterly_price: tier.price,
+    updated_at: new Date().toISOString()
+  }).eq('profile_id', session.user.id);
   currentOnboarding = payload;
   unlockOnboardingPayment();
   if(status) status.textContent = 'Saved. Continue to payment when ready.';
@@ -4721,7 +4727,7 @@ async function completeInviteSetup(){
   }
 }
 
-async async function doPasswordReset(){
+async function doPasswordReset(){
   const email = document.getElementById('login-email').value.trim();
   if(!email){ setLoginStatus('Enter your email address first.'); return; }
   setLoginStatus('Sending reset link…');
@@ -4731,7 +4737,7 @@ async async function doPasswordReset(){
   if(error){ setLoginStatus(error.message || 'Unable to send reset email.'); return; }
   setLoginStatus('Check your email — a reset link has been sent.');
 }
-function doLogin(){
+async function doLogin(){
   if(inviteSetupMode){ doInviteSetup(); return; }
   if(!sb){
     setLoginStatus('Supabase is unavailable.');
