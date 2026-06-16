@@ -1321,11 +1321,20 @@
       const isPaid = billing === 'paid';
       const photo = profilePhotoUrl(member.profile_photo_path);
       const initials = member.initials || String(member.display_name || member.email || 'LM').split(/\s+/).map(x => x[0]).join('').slice(0,2).toUpperCase();
+      const pmtStatus = onboarding.payment_status || 'not_submitted';
+      const pmtLabel = {
+        paid: 'Paid', card_saved: 'Card on File — Pending Charge',
+        pending: 'Awaiting Payment', not_submitted: 'Not submitted'
+      }[pmtStatus] || pmtStatus;
+      const pmtTag = {
+        paid: 'Paid', card_saved: 'Ready to Charge',
+        pending: 'Pending', not_submitted: 'Not submitted'
+      }[pmtStatus] || pmtStatus;
       const paymentRows = [
         ['Membership Billing', billing, `${money(quarterly)} / quarter`],
         ['Annualized Value', isPaid ? 'Counts toward ARR' : 'Excluded from ARR', money(isPaid ? quarterly * 4 : 0)],
         ['Renewal', membership.renewal_date || 'Not set', membership.renewal_date ? 'Scheduled' : 'Needs date'],
-        ['Onboarding Payment', onboarding.payment_status || 'Not submitted', 'Stripe not connected']
+        ['Onboarding Payment', pmtLabel, pmtTag]
       ];
       const eventContext = options.eventContext || null;
       const memberRequests = state.requests
@@ -1343,7 +1352,8 @@
             <div class="actions" style="margin-top:16px">
               <button class="btn" onclick="switchTab('members'); editMember('${member.id}')">Edit Member</button>
               <button class="btn" onclick="sendInvite('${member.id}')">Resend Invite</button>
-              ${(membership.status === 'pending' || membership.billing_status === 'card_saved' || onboarding?.payment_status === 'card_saved') ? `<button class="btn-gold" onclick="approveAndCharge('${member.id}')">Approve &amp; Charge</button>` : ''}
+              ${onboarding?.payment_status === 'card_saved' ? `<button class="btn-gold" onclick="approveAndCharge('${member.id}')">Approve &amp; Charge</button>` : ''}
+              ${(membership.status === 'pending' || membership.status === 'invited') && onboarding?.payment_status !== 'card_saved' && onboarding?.payment_status !== 'paid' && membership.billing_status !== 'paid' ? `<button class="btn" onclick="approveAndInvitePayment('${member.id}')">Approve — Request Payment</button>` : ''}
             </div>
           </div>
           <div class="dossier-card">
@@ -2571,6 +2581,18 @@
       flash('Invite Sent');
     }
 
+    async function approveAndInvitePayment(id){
+      let member = state.members.find(m => m.id === id);
+      if(!member){ await loadMembers(); member = state.members.find(m => m.id === id); }
+      if(!await lucienConfirm('Approve & Request Payment?', `This will mark ${member?.display_name || 'this member'} as approved and send them a payment setup link.`, { confirmLabel:'Approve & Send' })) return;
+      // Mark approved in memberships
+      await sb.from('memberships').update({ status:'approved', updated_at: new Date().toISOString() }).eq('profile_id', id);
+      // Send invite so they can complete payment
+      await sendInvite(id, { confirmSend:false, reload:false });
+      await Promise.all([loadMembers(), loadRequests()]);
+      renderMembers();
+      flash('Approved — payment invite sent');
+    }
     async function approveAndCharge(id){
       let member = state.members.find(m => m.id === id);
       if(!member){

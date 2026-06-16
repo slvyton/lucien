@@ -4340,8 +4340,8 @@ async function openCardSetup(tier, referralCode){
 async function openPaymentPortal(){
   const tierObj = selectedOnboardingTier();
   if(!tierObj.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
-  // 6-month trial: collect card details but don't charge until trial ends
-  await openLucienPayModal({ mode:'setup', tier: tierObj.tier, isTrial: true });
+  // Admin-invited members are pre-approved — charge immediately
+  await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
 }
 function openAcceptedOnboarding(){
   const overlay = document.getElementById('accepted-onboarding');
@@ -5066,10 +5066,21 @@ async function lpmSubmit(){
 
     closeLucienPayModal();
     if(_lpmMode === 'setup'){
-      toast('Card Saved', 'Your payment method is saved. Your membership will activate once approved.');
+      toast('Card Saved', 'Your payment method is secured. Your membership will activate once approved.');
+      // Close onboarding overlay — nothing more to do until approved
+      document.getElementById('accepted-onboarding')?.classList.remove('active');
     } else {
-      toast('Welcome to LUCIEN', `Your ${_lpmTier} membership is confirmed.`);
-      await loadMemberData().catch(()=>{});
+      // Payment complete — activate portal immediately
+      toast('Welcome to LUCIEN', `Your ${_lpmTier} membership is confirmed. Welcome to the society.`);
+      try{
+        await loadPortalData();
+        await loadMemberData();
+        document.getElementById('accepted-onboarding')?.classList.remove('active');
+        document.getElementById('login-screen')?.classList.remove('active');
+        document.getElementById('portal')?.classList.add('active');
+        document.body.classList.add('portal-open');
+        document.body.style.overflow = '';
+      }catch(err){ console.error(err); }
     }
   }catch(err){
     const msg = err.message || 'Payment failed';
