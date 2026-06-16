@@ -1740,6 +1740,11 @@
       const email = $('quick-email').value.trim();
       const flow = $('quick-invite-flow')?.value || 'standard';
       if(!firstName || !email) return alert('Add a first name and email.');
+      // Duplicate email check
+      const existing = state.members.find(m => m.email?.toLowerCase() === email.toLowerCase());
+      if(existing){
+        return alert(`A member with that email already exists: ${existing.display_name || existing.email}. Use Resend Invite if they need a new login link.`);
+      }
       flash('Creating Member...');
       try{
         const created = await createMinimalMember(firstName, email, flow);
