@@ -833,6 +833,9 @@ body.portal-open{overflow:auto}
 .evp-confirmed-mark{font-family:'Cinzel',serif;font-size:34px;color:var(--gold);margin-bottom:18px}
 .evp-confirmed-title{font-family:'Cinzel',serif;font-size:18px;letter-spacing:0.14em;color:var(--ivory);margin-bottom:12px}
 .evp-confirmed-body{font-family:'Cormorant Garamond',serif;font-size:17px;font-weight:300;line-height:1.8;color:var(--ivory-dim);max-width:340px;margin:0 auto}
+.rsvp-row{display:flex;gap:12px;padding:5px 0;font-size:11px}
+.rsvp-label{color:rgba(200,168,107,0.55);min-width:110px;flex-shrink:0;text-transform:uppercase;font-size:8px;letter-spacing:0.18em;padding-top:2px}
+.rsvp-val{color:var(--ivory-dim);line-height:1.6}
 @media(max-width:640px){
   .evp-header{padding:44px 24px 28px}
   .evp-title{font-size:24px}
@@ -961,8 +964,9 @@ body.portal-open{overflow:auto}
 }
 .application-chip{
   font-family:'Montserrat',sans-serif;font-size:8px;letter-spacing:0.22em;text-transform:uppercase;
-  color:var(--ivory-dim);text-align:center;
+  color:var(--ivory-dim);text-align:center;cursor:pointer;transition:color 0.2s,border-color 0.2s;
 }
+.application-chip:hover{color:var(--gold);border-color:rgba(200,168,107,0.5);}
 .application-item-title{
   font-family:'Cinzel',serif;font-size:16px;letter-spacing:0.07em;color:var(--ivory);margin-bottom:8px;
 }
@@ -3642,13 +3646,30 @@ function openEvent(id, jumpToForm){
   if(standing?.locked){
     const title = standing.state === 'confirmed' ? "You're Going" : standing.label;
     const body = standing.state === 'confirmed'
-      ? `Your place at ${e.title} is confirmed. Any guest names, notes, and arrival details are held with the concierge.`
+      ? `Your place at ${e.title} is confirmed.`
       : standing.body;
+    // Build RSVP detail block from stored request/attendance data
+    let rsvpDetail = '';
+    if(standing.state === 'confirmed'){
+      const rec = MEMBER_EVENT_ATTENDANCE[e.id] || MEMBER_EVENT_REQUESTS[e.id] || {};
+      const rows = [
+        rec.guest_names ? `<div class="rsvp-row"><span class="rsvp-label">Guest</span><span class="rsvp-val">${esc(rec.guest_names)}</span></div>` : '',
+        rec.party_size > 1 ? `<div class="rsvp-row"><span class="rsvp-label">Party size</span><span class="rsvp-val">${rec.party_size}</span></div>` : '',
+        rec.intention ? `<div class="rsvp-row"><span class="rsvp-label">Why joining</span><span class="rsvp-val">${esc(rec.intention)}</span></div>` : '',
+        rec.dietary_access_notes ? `<div class="rsvp-row"><span class="rsvp-label">Dietary / notes</span><span class="rsvp-val">${esc(rec.dietary_access_notes)}</span></div>` : '',
+        rec.arrival_notes ? `<div class="rsvp-row"><span class="rsvp-label">Arrival</span><span class="rsvp-val">${esc(rec.arrival_notes)}</span></div>` : '',
+      ].filter(Boolean).join('');
+      if(rows){
+        rsvpDetail = `<div class="rsvp-details" id="rsvp-detail-${escAttr(e.id)}" style="display:none;margin-top:14px;border-top:1px solid rgba(200,168,107,0.12);padding-top:14px">${rows}</div>
+          <button class="notice-action" style="margin-top:12px;font-size:8px" onclick="(function(btn,d){d.style.display=d.style.display==='none'?'':' none';btn.textContent=d.style.display===''?'Hide RSVP':'View RSVP →'})(this,document.getElementById('rsvp-detail-${escAttr(e.id)}'))">View RSVP →</button>`;
+      }
+    }
     actionArea = `
       <div class="evp-confirmed show" id="evp-confirmed">
         <div class="evp-confirmed-mark">${standing.state === 'confirmed' ? '✓' : '—'}</div>
         <div class="evp-confirmed-title">${esc(title)}</div>
         <div class="evp-confirmed-body">${esc(body)}</div>
+        ${rsvpDetail}
         ${standing.state === 'confirmed' ? calendarLinksHTML(e) : ''}
       </div>`;
   }else if(e.status==='open' || e.status==='interest' || e.status==='request'){
@@ -3972,6 +3993,9 @@ function hydrateApplicationBrand(){
 function openPublicReferral(){
   const code = referralParam();
   if(!code) return;
+  // Skip entry screen — go straight to application
+  const entry = document.getElementById('entry');
+  if(entry) entry.style.display = 'none';
   hydrateApplicationBrand();
   const overlay = document.getElementById('public-referral');
   if(overlay) overlay.classList.add('active');
