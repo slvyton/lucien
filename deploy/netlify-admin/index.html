@@ -683,7 +683,7 @@
 
       <section id="members" class="screen hidden">
         <div class="panel">
-          <div class="tiny">Members</div>
+          <div class="tiny" style="display:flex;align-items:center;justify-content:space-between">Members<button class="btn-ghost" style="font-size:10px;letter-spacing:0.12em;padding:4px 10px" onclick="loadMembers().then(renderMembers)">↺ Refresh</button></div>
           <p class="muted">Create member logins, edit profiles, and manage membership standing. Quick Invite creates a minimal member record and sends onboarding.</p>
           <div class="grid three" style="margin-top:16px">
             <div class="field"><label>First Name</label><input id="quick-first-name" placeholder="First name"></div>
@@ -2348,10 +2348,31 @@
       if(viewer) viewer.innerHTML = renderMemberViewer();
       renderMemberApprovalDashboard();
     }
-    function viewMember(id){
+    async function viewMember(id){
       state.selectedMemberViewId = id;
       renderMembers();
       setTimeout(() => $('member-viewer')?.scrollIntoView({ behavior:'smooth', block:'nearest' }), 40);
+      // Re-fetch this member's latest data so admin always sees current info
+      try {
+        const [profRes, memRes, onbRes] = await Promise.all([
+          sb.from('profiles').select('*').eq('id', id).single(),
+          sb.from('memberships').select('*').eq('profile_id', id).single(),
+          sb.from('member_onboarding').select('*').eq('profile_id', id).single()
+        ]);
+        if(profRes.data){
+          const idx = state.members.findIndex(m => m.id === id);
+          if(idx >= 0) state.members[idx] = profRes.data; else state.members.push(profRes.data);
+        }
+        if(memRes.data){
+          const idx = state.memberships.findIndex(m => m.profile_id === id);
+          if(idx >= 0) state.memberships[idx] = memRes.data; else state.memberships.push(memRes.data);
+        }
+        if(onbRes.data){
+          const idx = state.onboarding.findIndex(o => o.profile_id === id);
+          if(idx >= 0) state.onboarding[idx] = onbRes.data; else state.onboarding.push(onbRes.data);
+        }
+        renderMembers();
+      } catch(e){ /* silent */ }
     }
     function renderMemberViewer(){
       if(!state.selectedMemberViewId) return '';
