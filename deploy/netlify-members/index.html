@@ -4511,6 +4511,7 @@ async function submitAcceptedOnboarding(){
     if(status) status.textContent = 'Add a phone number or choose email as your preferred contact.';
     return;
   }
+  const isCompedInvite = inviteFlowFromMembership() === 'comped' || tier.price <= 0;
   if(status) status.textContent = 'Saving membership setup...';
   const payload = {
     profile_id:session.user.id,
@@ -4554,8 +4555,8 @@ async function submitAcceptedOnboarding(){
   }).eq('profile_id', session.user.id);
   currentOnboarding = payload;
   unlockOnboardingPayment();
-  await loadMemberData().catch(()=>{});
-  if(inviteFlowFromMembership() === 'comped'){
+  if(isCompedInvite){
+    await loadMemberData().catch(()=>{});
     if(status) status.textContent = 'Saved. Opening your member portal...';
     toast('Onboarding Saved', 'Your comped membership setup is complete.');
     document.getElementById('accepted-onboarding')?.classList.remove('active');
@@ -4564,7 +4565,12 @@ async function submitAcceptedOnboarding(){
   }
   if(status) status.textContent = 'Saved. Opening secure payment...';
   toast('Onboarding Saved', `${tier.tier} membership setup saved. Opening payment.`);
-  await openPaymentPortal();
+  try{
+    await openLucienPayModal({ mode:'payment', tier:tier.tier });
+  }catch(err){
+    console.error(err);
+    if(status) status.textContent = err.message || 'Saved. Use Continue to Payment to open secure billing.';
+  }
 }
 function openMembership(){
   genericRequestPanel({ tag:'Membership', statusTag:'Lucien Emerald', title:'Manage Membership',
