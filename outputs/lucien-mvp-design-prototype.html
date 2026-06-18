@@ -4343,7 +4343,7 @@ async function openPaymentPortal(){
   // Admin-invited members are pre-approved — charge immediately
   await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
 }
-async function markMembershipPaidAfterPayment(tier){
+async function markMembershipPaidAfterPayment(tier, paymentIntentId){
   if(!sb) return;
   let session = currentSession;
   if(!session){
@@ -4379,25 +4379,23 @@ async function markMembershipPaidAfterPayment(tier){
     updated_at: now
   };
 
-  const [onboardingRes, membershipRes] = await Promise.all([
-    sb.from('member_onboarding').update({
-      selected_tier: selectedTier,
-      quarterly_price: price,
-      payment_status: 'paid',
-      updated_at: now
-    }).eq('profile_id', session.user.id),
-    sb.from('memberships').update({
-      tier: selectedTier,
-      status: 'active',
-      billing_status: 'paid',
-      quarterly_price: price,
-      renewal_date: currentMembership.renewal_date,
-      updated_at: now
-    }).eq('profile_id', session.user.id)
-  ]);
+  if(paymentIntentId){
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/finalize-membership-payment`, {
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'Authorization':`Bearer ${session.access_token}`,
+        'apikey': SUPABASE_ANON_KEY
+      },
+      body: JSON.stringify({ payment_intent_id: paymentIntentId })
+    });
+    const data = await res.json().catch(() => ({}));
+    if(!res.ok) throw new Error(data.error || 'Payment succeeded, but membership activation could not be finalized.');
+    if(data.renewal_date) currentMembership.renewal_date = data.renewal_date;
+    return data;
+  }
 
-  if(onboardingRes.error) console.warn('LUCIEN onboarding payment status was not updated immediately.', onboardingRes.error);
-  if(membershipRes.error) console.warn('LUCIEN membership payment status was not updated immediately.', membershipRes.error);
+  throw new Error('Payment succeeded, but Stripe did not return a payment confirmation ID. Refresh in a moment, or check Stripe webhook status.');
 }
 function openAcceptedOnboarding(){
   const overlay = document.getElementById('accepted-onboarding');
@@ -4972,6 +4970,7 @@ async function handleStripeReturn(){
   const params = new URLSearchParams(window.location.search);
   if(params.get('payment') === 'success'){
     const tier = params.get('tier') || 'Sage';
+    const paymentIntentId = params.get('payment_intent') || '';
     window.history.replaceState({}, '', window.location.pathname);
     if(!sb){
       openLogin();
@@ -4979,7 +4978,7 @@ async function handleStripeReturn(){
       return true;
     }
     try{
-      await markMembershipPaidAfterPayment(tier);
+      await markMembershipPaidAfterPayment(tier, paymentIntentId);
       await loadPortalData();
       await loadMemberData();
       document.getElementById('accepted-onboarding')?.classList.remove('active');
@@ -5165,12 +5164,21 @@ async function lpmSubmit(){
       // Payment complete — activate portal immediately
       toast('Welcome to LUCIEN', `Your ${_lpmTier} membership is confirmed. Welcome to the society.`);
       try{
-        await markMembershipPaidAfterPayment(_lpmTier);
+        await markMembershipPaidAfterPayment(_lpmTier, result.paymentIntent?.id);
         await loadPortalData();
         await loadMemberData();
         document.getElementById('accepted-onboarding')?.classList.remove('active');
         await enterPortal();
-      }catch(err){ console.error(err); }
+      }catch(err){
+        const msg = err.message || 'Payment succeeded, but membership activation could not be finalized.';
+        console.error(err);
+        toast('Activation Needs Attention', msg);
+        const onboardStatus = document.getElementById('onboard-status');
+        if(onboardStatus) onboardStatus.textContent = msg;
+        if(statusEl) statusEl.textContent = msg;
+        if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Complete Enrollment'; }
+        return;
+      }
     }
   }catch(err){
     const msg = err.message || 'Payment failed';
