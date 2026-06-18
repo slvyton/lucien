@@ -6,9 +6,9 @@ Lucien is a private membership society platform. Two user types: **admin** (Mike
 
 ## Live URLs
 - Member portal: `https://houseoflucien.com` → `deploy/netlify-members/index.html`
-- Admin dashboard: `https://houseoflucien.com/lucien-admin-dashboard.html`
+- Admin dashboard: `https://admin.houseoflucien.com/` → `deploy/netlify-admin/index.html`
 - Privacy policy: `https://houseoflucien.com/privacy`
-- Hosting: Netlify, auto-deploys from `slvyton/lucien` GitHub repo (public), `deploy/netlify-members/` folder
+- Hosting: Netlify, auto-deploys from `slvyton/lucien` GitHub repo (public)
 
 ## Repo & File Structure
 ```
@@ -17,10 +17,11 @@ Lucien is a private membership society platform. Two user types: **admin** (Mike
 │   ├── lucien-mvp-design-prototype.html   ← member portal source (~5200 lines)
 │   └── lucien-admin-dashboard.html         ← admin dashboard source (~2700 lines)
 ├── deploy/
-│   └── netlify-members/
+│   ├── netlify-members/
 │       ├── index.html                      ← member portal (synced from outputs/)
-│       ├── lucien-admin-dashboard.html     ← admin dashboard (synced from outputs/)
 │       └── privacy.html                    ← privacy policy
+│   └── netlify-admin/
+│       └── index.html                      ← admin dashboard (synced from outputs/)
 └── supabase/
     └── functions/
         ├── create-payment-intent/          ← Stripe PaymentIntent for admin-invite flow
