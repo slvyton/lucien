@@ -4343,6 +4343,62 @@ async function openPaymentPortal(){
   // Admin-invited members are pre-approved — charge immediately
   await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
 }
+async function markMembershipPaidAfterPayment(tier){
+  if(!sb) return;
+  let session = currentSession;
+  if(!session){
+    const { data } = await sb.auth.getSession();
+    session = data?.session;
+    currentSession = session || null;
+  }
+  if(!session?.user?.id) return;
+
+  const selectedTier = tier === 'Emerald' ? 'Emerald' : 'Sage';
+  const price = selectedTier === 'Emerald' ? 2500 : 550;
+  const now = new Date().toISOString();
+  const nextQuarter = new Date();
+  nextQuarter.setMonth(nextQuarter.getMonth() + 3);
+  const renewalDate = nextQuarter.toISOString().slice(0,10);
+
+  currentOnboarding = {
+    ...(currentOnboarding || {}),
+    profile_id: session.user.id,
+    selected_tier: selectedTier,
+    quarterly_price: price,
+    payment_status: 'paid',
+    updated_at: now
+  };
+  currentMembership = {
+    ...(currentMembership || {}),
+    profile_id: session.user.id,
+    tier: selectedTier,
+    status: 'active',
+    billing_status: 'paid',
+    quarterly_price: price,
+    renewal_date: currentMembership?.renewal_date || renewalDate,
+    updated_at: now
+  };
+
+  const [onboardingRes, membershipRes] = await Promise.all([
+    sb.from('member_onboarding').update({
+      selected_tier: selectedTier,
+      quarterly_price: price,
+      payment_status: 'paid',
+      updated_at: now
+    }).eq('profile_id', session.user.id),
+    sb.from('memberships').update({
+      tier: selectedTier,
+      status: 'active',
+      billing_status: 'paid',
+      quarterly_price: price,
+      renewal_date: currentMembership.renewal_date,
+      updated_at: now
+    }).eq('profile_id', session.user.id)
+  ]);
+
+  if(onboardingRes.error) console.warn('LUCIEN onboarding payment status was not updated immediately.', onboardingRes.error);
+  if(membershipRes.error) console.warn('LUCIEN membership payment status was not updated immediately.', membershipRes.error);
+}
 function openAcceptedOnboarding(){
   const overlay = document.getElementById('accepted-onboarding');
   if(!overlay) return;
@@ -4906,30 +4962,52 @@ document.getElementById('setup-pass-confirm').addEventListener('keydown', e=>{
 });
 document.querySelectorAll('input[name="onboarding-tier"]').forEach(input => input.addEventListener('change', updateOnboardingPaymentSummary));
 
-// Handle Stripe return
-(function(){
+async function handleStripeReturn(){
   const params = new URLSearchParams(window.location.search);
   if(params.get('payment') === 'success'){
-    const tier = params.get('tier') || 'member';
-    setTimeout(() => toast('Welcome to LUCIEN', `Your ${tier} membership is confirmed. Welcome to the society.`), 800);
+    const tier = params.get('tier') || 'Sage';
     window.history.replaceState({}, '', window.location.pathname);
+    if(!sb){
+      openLogin();
+      setLoginStatus('Payment succeeded. Sign in to finish opening your member portal.');
+      return true;
+    }
+    try{
+      await markMembershipPaidAfterPayment(tier);
+      await loadPortalData();
+      await loadMemberData();
+      document.getElementById('accepted-onboarding')?.classList.remove('active');
+      await enterPortal();
+      setTimeout(() => toast('Welcome to LUCIEN', `Your ${tier} membership is confirmed. Welcome to the society.`), 300);
+    }catch(err){
+      console.error(err);
+      openLogin();
+      setLoginStatus(err.message || 'Payment succeeded, but the member portal could not load.');
+    }
+    return true;
   }
   if(params.get('payment') === 'cancelled'){
     setTimeout(() => toast('Checkout Cancelled', 'Your membership was not charged. You can complete payment when ready.'), 800);
     window.history.replaceState({}, '', window.location.pathname);
+    return true;
   }
   if(params.get('setup') === 'success'){
     const savedTier = params.get('tier') || 'Sage';
     setTimeout(() => toast('Payment Method Saved', `Your ${savedTier} membership is pending concierge approval. You will only be charged once approved.`), 800);
     window.history.replaceState({}, '', window.location.pathname);
+    return true;
   }
   if(params.get('setup') === 'cancelled'){
     setTimeout(() => toast('Setup Cancelled', 'No card was saved. You can add a payment method later.'), 800);
     window.history.replaceState({}, '', window.location.pathname);
+    return true;
   }
-})();
+  return false;
+}
 openPublicReferral();
-initializeAcceptedOnboarding();
+handleStripeReturn().then(handled => {
+  if(!handled) initializeAcceptedOnboarding();
+});
 
 
 // ══ LUCIEN PAYMENT MODAL ══════════════════════════════════════════════
@@ -5081,13 +5159,11 @@ async function lpmSubmit(){
       // Payment complete — activate portal immediately
       toast('Welcome to LUCIEN', `Your ${_lpmTier} membership is confirmed. Welcome to the society.`);
       try{
+        await markMembershipPaidAfterPayment(_lpmTier);
         await loadPortalData();
         await loadMemberData();
         document.getElementById('accepted-onboarding')?.classList.remove('active');
-        document.getElementById('login-screen')?.classList.remove('active');
-        document.getElementById('portal')?.classList.add('active');
-        document.body.classList.add('portal-open');
-        document.body.style.overflow = '';
+        await enterPortal();
       }catch(err){ console.error(err); }
     }
   }catch(err){
