@@ -4498,9 +4498,17 @@ async function submitAcceptedOnboarding(){
   }).eq('profile_id', session.user.id);
   currentOnboarding = payload;
   unlockOnboardingPayment();
-  if(status) status.textContent = 'Saved. Continue to payment when ready.';
-  toast('Onboarding Saved', `${tier.tier} membership setup is ready for payment.`);
   await loadMemberData().catch(()=>{});
+  if(inviteFlowFromMembership() === 'comped'){
+    if(status) status.textContent = 'Saved. Opening your member portal...';
+    toast('Onboarding Saved', 'Your comped membership setup is complete.');
+    document.getElementById('accepted-onboarding')?.classList.remove('active');
+    await enterPortal();
+    return;
+  }
+  if(status) status.textContent = 'Saved. Opening secure payment...';
+  toast('Onboarding Saved', `${tier.tier} membership setup saved. Opening payment.`);
+  await openPaymentPortal();
 }
 function openMembership(){
   genericRequestPanel({ tag:'Membership', statusTag:'Lucien Emerald', title:'Manage Membership',
