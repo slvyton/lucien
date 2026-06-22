@@ -176,9 +176,6 @@ Deno.serve(async (req) => {
   if (!supabaseUrl || !anonKey || !serviceRoleKey) {
     return json({ error: "Missing Supabase environment variables" }, 500);
   }
-  if (!resendApiKey) {
-    return json({ error: "Missing RESEND_API_KEY. Add it as a Supabase function secret before sending invites." }, 500);
-  }
   if (!rawRedirectTo) {
     return json({ error: "Missing MEMBER_INVITE_REDIRECT_URL or SITE_URL function secret." }, 500);
   }
@@ -214,8 +211,13 @@ Deno.serve(async (req) => {
 
   const body = await req.json();
   const profileId = String(body.profile_id || body.profileId || "");
+  const delivery = String(body.delivery || "email").toLowerCase();
+  const linkOnly = ["link", "link_only", "copy"].includes(delivery);
   if (!profileId) {
     return json({ error: "profile_id is required" }, 400);
+  }
+  if (!linkOnly && !resendApiKey) {
+    return json({ error: "Missing RESEND_API_KEY. Add it as a Supabase function secret before sending invites." }, 500);
   }
 
   const { data: profile, error: profileError } = await adminClient
@@ -266,13 +268,29 @@ Deno.serve(async (req) => {
     .insert({
       profile_id: profile.id,
       email,
-      status: "queued",
+      status: linkOnly ? "generated" : "queued",
       sent_by: authUser.user.id,
     })
     .select()
     .single();
 
   const inviteId = inviteInsert.data?.id;
+
+  if (linkOnly) {
+    await adminClient
+      .from("memberships")
+      .update({ status: "invited" })
+      .eq("profile_id", profile.id)
+      .neq("status", "active");
+
+    return json({
+      ok: true,
+      email,
+      invite_link: inviteLink,
+      delivery: "link",
+      invite_id: inviteId || null,
+    });
+  }
 
   try {
     const response = await fetch("https://api.resend.com/emails", {

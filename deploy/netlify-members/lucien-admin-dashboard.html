@@ -684,13 +684,15 @@
       <section id="members" class="screen hidden">
         <div class="panel">
           <div class="tiny" style="display:flex;align-items:center;justify-content:space-between">Members<button class="btn-ghost" style="font-size:10px;letter-spacing:0.12em;padding:4px 10px" onclick="loadMembers().then(renderMembers)">↺ Refresh</button></div>
-          <p class="muted">Create member logins, edit profiles, and manage membership standing. Quick Invite creates a minimal member record and sends onboarding.</p>
+          <p class="muted">Create member logins, edit profiles, and manage membership standing. Quick Invite sends onboarding, or generate a private signup link to share yourself.</p>
           <div class="grid three" style="margin-top:16px">
             <div class="field"><label>First Name</label><input id="quick-first-name" placeholder="First name"></div>
             <div class="field"><label>Email</label><input id="quick-email" type="email" placeholder="member@email.com"></div>
             <div class="field"><label>Invite Flow</label><select id="quick-invite-flow"><option value="standard">Standard · Choose Sage or Emerald</option><option value="sage">Sage Only · $550 / quarter</option><option value="emerald">Emerald Only · $2,500 / quarter</option><option value="comped">Comped · No payment wall</option></select></div>
             <div class="field"><label>&nbsp;</label><button class="btn primary" style="width:100%" onclick="quickInviteMember()">Quick Invite</button></div>
+            <div class="field"><label>&nbsp;</label><button class="btn" style="width:100%" onclick="generateQuickInviteLink()">Generate Link</button></div>
           </div>
+          <div id="quick-invite-link-panel" class="empty hidden" style="margin-top:14px"></div>
           <div class="tabs" id="member-tabs"></div>
           <div id="members-list" class="list" style="margin-top:14px"></div>
           <div id="member-viewer"></div>
@@ -769,7 +771,8 @@
       selectedRevenueMemberId: '',
       selectedMemberViewId: '',
       selectedEventEditId: '',
-      eventEditSnapshot: ''
+      eventEditSnapshot: '',
+      generatedInviteLink: ''
     };
 
     const $ = id => document.getElementById(id);
@@ -1745,6 +1748,60 @@
       return data;
     }
 
+    async function applyInviteFlowToMember(id, flow='standard'){
+      const cfg = inviteFlowConfig(flow);
+      const membership = state.memberships.find(ms => ms.profile_id === id);
+      const update = {
+        tier:cfg.tier,
+        billing_status:cfg.billing_status,
+        quarterly_price:cfg.quarterly_price,
+        private_notes:`invite_flow:${cfg.key}\n${cfg.note}`,
+        updated_at:new Date().toISOString()
+      };
+      if(!membership || String(membership.status || '').toLowerCase() !== 'active') update.status = cfg.status;
+      const { error } = await sb.from('memberships').update(update).eq('profile_id', id);
+      if(error) throw new Error(error.message);
+    }
+
+    async function copyText(text){
+      try{
+        await navigator.clipboard.writeText(text);
+        return true;
+      }catch(_err){
+        return false;
+      }
+    }
+
+    async function showGeneratedInviteLink(link, label='Signup link'){
+      state.generatedInviteLink = link;
+      const panel = $('quick-invite-link-panel');
+      const copied = await copyText(link);
+      if(panel){
+        panel.classList.remove('hidden');
+        panel.innerHTML = `
+          <div class="tiny">${esc(label)} ${copied ? '· copied' : ''}</div>
+          <div class="row-meta" style="margin-top:8px;word-break:break-all">${esc(link)}</div>
+          <div class="actions" style="margin-top:12px">
+            <button class="btn primary" onclick="copyText(state.generatedInviteLink).then(ok => flash(ok ? 'Link Copied' : 'Copy Failed'))">Copy Link</button>
+          </div>
+        `;
+      }
+      flash(copied ? 'Signup Link Copied' : 'Signup Link Generated');
+      if(!copied) await lucienPrompt('Signup link generated', link, { inputLabel:'Copy this link', inputPlaceholder:link, confirmLabel:'Done', kicker:'Invite Link' });
+    }
+
+    async function generateMemberInviteLink(id, options={}){
+      const reload = options.reload !== false;
+      const { data, error } = await sb.functions.invoke('send-member-invite', {
+        body:{ profile_id:id, delivery:'link' }
+      });
+      if(error) throw new Error(await functionErrorMessage(error));
+      if(data?.error) throw new Error(data.error);
+      if(!data?.invite_link) throw new Error('Invite link was not returned.');
+      if(reload) await Promise.all([loadMembers(), loadRequests()]);
+      return data.invite_link;
+    }
+
     async function quickInviteMember(){
       const firstName = $('quick-first-name').value.trim();
       const email = $('quick-email').value.trim();
@@ -1768,6 +1825,29 @@
         flash('Invite Sent');
       }catch(err){
         alert(err.message || 'Unable to create and invite member.');
+      }
+    }
+
+    async function generateQuickInviteLink(){
+      const firstName = $('quick-first-name').value.trim();
+      const email = $('quick-email').value.trim();
+      const flow = $('quick-invite-flow')?.value || 'standard';
+      if(!email) return alert('Add an email address first.');
+      let member = state.members.find(m => m.email?.toLowerCase() === email.toLowerCase());
+      if(!member && !firstName) return alert('Add a first name for a new member link.');
+      flash('Generating Link...');
+      try{
+        if(member){
+          await applyInviteFlowToMember(member.id, flow);
+        }else{
+          member = await createMinimalMember(firstName, email, flow);
+        }
+        const link = await generateMemberInviteLink(member.id, { reload:false });
+        await loadMembers();
+        renderMembers();
+        await showGeneratedInviteLink(link, `${inviteFlowConfig(flow).tier} signup link`);
+      }catch(err){
+        alert(err.message || 'Unable to generate signup link.');
       }
     }
 
@@ -2342,7 +2422,7 @@
         const lifecycle = memberLifecycle(m, ms);
         const onboarding = onboardingFor(m.id);
         const onboardingMeta = onboarding ? `${esc(onboarding.selected_tier || ms?.tier || 'Member')} setup · ${esc(onboarding.payment_status || 'payment pending')}` : 'Onboarding not completed';
-        return `<div class="row"><div><div class="row-title">${esc(m.display_name || m.email || 'Unnamed Member')}</div><div class="row-meta"><span class="tier-chip ${tierClass(ms?.tier)}">${esc(ms?.tier || 'Member')}</span> · <span class="pill">${esc(lifecycle.label)}</span> · ${esc(billingStatus(ms))} · ${money(ms?.quarterly_price || 0)} / quarter · ${esc(m.email || '')} · ${esc(m.city || '')}</div><div class="row-meta">${onboardingMeta}</div></div><div class="actions"><button class="btn primary" onclick="viewMember('${m.id}')">View</button><button class="btn" onclick="sendInvite('${m.id}')">Resend Invite</button><button class="btn" onclick="editMember('${m.id}')">Edit</button><button class="btn danger" onclick="deleteMember('${m.id}')">Delete</button></div></div>`;
+        return `<div class="row"><div><div class="row-title">${esc(m.display_name || m.email || 'Unnamed Member')}</div><div class="row-meta"><span class="tier-chip ${tierClass(ms?.tier)}">${esc(ms?.tier || 'Member')}</span> · <span class="pill">${esc(lifecycle.label)}</span> · ${esc(billingStatus(ms))} · ${money(ms?.quarterly_price || 0)} / quarter · ${esc(m.email || '')} · ${esc(m.city || '')}</div><div class="row-meta">${onboardingMeta}</div></div><div class="actions"><button class="btn primary" onclick="viewMember('${m.id}')">View</button><button class="btn" onclick="sendInvite('${m.id}')">Resend Invite</button><button class="btn" onclick="generateExistingMemberInviteLink('${m.id}')">Generate Link</button><button class="btn" onclick="editMember('${m.id}')">Edit</button><button class="btn danger" onclick="deleteMember('${m.id}')">Delete</button></div></div>`;
       }).join('') : '<div class="empty">No members in this view.</div>';
       const viewer = $('member-viewer');
       if(viewer) viewer.innerHTML = renderMemberViewer();
@@ -2600,6 +2680,23 @@
         renderMembers();
       }
       flash('Invite Sent');
+    }
+
+    async function generateExistingMemberInviteLink(id){
+      let member = state.members.find(m => m.id === id);
+      if(!member){
+        await loadMembers();
+        member = state.members.find(m => m.id === id);
+      }
+      if(!member?.email) return alert('This member needs an email address before a link can be generated.');
+      flash('Generating Link...');
+      try{
+        const link = await generateMemberInviteLink(id);
+        renderMembers();
+        await showGeneratedInviteLink(link, `${member.display_name || member.email} signup link`);
+      }catch(err){
+        alert(err.message || 'Unable to generate signup link.');
+      }
     }
 
     async function approveAndInvitePayment(id){
