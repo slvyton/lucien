@@ -684,13 +684,15 @@
       <section id="members" class="screen hidden">
         <div class="panel">
           <div class="tiny" style="display:flex;align-items:center;justify-content:space-between">Members<button class="btn-ghost" style="font-size:10px;letter-spacing:0.12em;padding:4px 10px" onclick="loadMembers().then(renderMembers)">↺ Refresh</button></div>
-          <p class="muted">Create member logins, edit profiles, and manage membership standing. Quick Invite sends onboarding, or generate a private signup link to share yourself.</p>
+          <p class="muted">Create member logins, edit profiles, and manage membership standing. Send the onboarding email or generate a private signup link to share yourself.</p>
           <div class="grid three" style="margin-top:16px">
             <div class="field"><label>First Name</label><input id="quick-first-name" placeholder="First name"></div>
             <div class="field"><label>Email</label><input id="quick-email" type="email" placeholder="member@email.com"></div>
             <div class="field"><label>Invite Flow</label><select id="quick-invite-flow"><option value="standard">Standard · Choose Sage or Emerald</option><option value="sage">Sage Only · $550 / quarter</option><option value="emerald">Emerald Only · $2,500 / quarter</option><option value="comped">Comped · No payment wall</option></select></div>
-            <div class="field"><label>&nbsp;</label><button class="btn primary" style="width:100%" onclick="quickInviteMember()">Quick Invite</button></div>
-            <div class="field"><label>&nbsp;</label><button class="btn" style="width:100%" onclick="generateQuickInviteLink()">Generate Link</button></div>
+          </div>
+          <div class="actions" style="margin-top:14px;justify-content:flex-start">
+            <button class="btn primary" onclick="quickInviteMember()">Send Email Invite</button>
+            <button class="btn" onclick="generateQuickInviteLink()">Generate Signup Link</button>
           </div>
           <div id="quick-invite-link-panel" class="empty hidden" style="margin-top:14px"></div>
           <div class="tabs" id="member-tabs"></div>
