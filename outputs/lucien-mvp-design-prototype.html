@@ -1961,11 +1961,11 @@ body{
       <li class="active" onclick="portalNav('p-dashboard',this)">Dashboard</li>
       <li onclick="portalNav('p-events',this)">Member Events</li>
       <li onclick="portalNav('p-retreats',this)">Retreats</li>
-      <li onclick="portalNav('p-concierge',this)">Concierge</li>
+      <li onclick="portalNav('p-directory',this)">Directory</li>
       <li class="portal-more" id="portal-more">
         <button class="portal-more-btn" onclick="toggleMoreMenu(event)">More</button>
         <div class="portal-more-menu">
-          <button onclick="portalNavFromMore('p-directory')">Members</button>
+          <button onclick="portalNavFromMore('p-concierge')">Concierge</button>
           <button onclick="portalNavFromMore('p-referrals')">Invitations</button>
           <button onclick="portalNavFromMore('p-perks')">Perks</button>
           <button onclick="portalNavFromMore('p-announcements')">Announcements</button>
@@ -2003,7 +2003,7 @@ body{
     </div>
     <ul class="drawer-menu">
       <li onclick="portalNavMobile('p-dashboard',this)">Dashboard</li>
-      <li onclick="portalNavMobile('p-directory',this)">Members</li>
+      <li onclick="portalNavMobile('p-directory',this)">Directory</li>
       <li onclick="portalNavMobile('p-events',this)">Member Events</li>
       <li onclick="portalNavMobile('p-retreats',this)">Retreats</li>
       <li onclick="portalNavMobile('p-concierge',this)">Concierge</li>
@@ -4936,7 +4936,7 @@ function portalNav(id, el){
   document.getElementById(id).classList.add('active');
   if(el) el.classList.add('active');
   else {
-    const primary = { 'p-dashboard':0, 'p-events':1, 'p-retreats':2, 'p-concierge':3 }[id];
+    const primary = { 'p-dashboard':0, 'p-events':1, 'p-retreats':2, 'p-directory':3 }[id];
     const items = document.querySelectorAll('#portal-menu > li');
     if(primary !== undefined && items[primary]) items[primary].classList.add('active');
     if(primary === undefined) document.getElementById('portal-more')?.classList.add('active');
