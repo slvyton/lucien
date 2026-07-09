@@ -8,6 +8,11 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function dateFromStripeSeconds(seconds?: number | null) {
+  if (!seconds) return null;
+  return new Date(seconds * 1000).toISOString().slice(0, 10);
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
@@ -41,9 +46,10 @@ Deno.serve(async (req) => {
     tier: string;
     customerId: string | null;
     subscriptionId?: string | null;
+    renewalDate?: string | null;
     action: string;
   }) {
-    const { profileId, tier, customerId, subscriptionId, action } = params;
+    const { profileId, tier, customerId, subscriptionId, renewalDate, action } = params;
     const normalizedTier = tier === "Emerald" ? "Emerald" : "Sage";
 
     await adminClient
@@ -53,6 +59,7 @@ Deno.serve(async (req) => {
         tier: normalizedTier,
         billing_status: "paid",
         quarterly_price: normalizedTier === "Sage" ? 550 : 2500,
+        renewal_date: renewalDate,
         updated_at: new Date().toISOString(),
       })
       .eq("profile_id", profileId);
@@ -72,8 +79,8 @@ Deno.serve(async (req) => {
       subject_type: "memberships",
       subject_id: profileId,
       action,
-      new_data: { tier: normalizedTier, stripe_customer_id: customerId, stripe_subscription_id: subscriptionId },
-      changed_fields: ["status", "tier", "billing_status", "payment_status"],
+      new_data: { tier: normalizedTier, stripe_customer_id: customerId, stripe_subscription_id: subscriptionId, renewal_date: renewalDate },
+      changed_fields: ["status", "tier", "billing_status", "payment_status", "renewal_date"],
     });
   }
 
@@ -85,11 +92,18 @@ Deno.serve(async (req) => {
 
     if (session.mode === "subscription") {
       if (!profileId || !tier) return json({ received: true });
+      const subscriptionId = session.subscription?.toString() || null;
+      let renewalDate: string | null = null;
+      if (subscriptionId) {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        renewalDate = dateFromStripeSeconds(subscription.current_period_end);
+      }
       await activateSubscriptionMembership({
         profileId,
         tier,
         customerId: session.customer?.toString() || null,
-        subscriptionId: session.subscription?.toString() || null,
+        subscriptionId,
+        renewalDate,
         action: "stripe_subscription_checkout_completed",
       });
       return json({ received: true });
@@ -125,6 +139,7 @@ Deno.serve(async (req) => {
         tier,
         customerId: subscription.customer?.toString() || null,
         subscriptionId: subscription.id,
+        renewalDate: dateFromStripeSeconds(subscription.current_period_end),
         action: `stripe_subscription_${subscription.status}`,
       });
       return json({ received: true });
@@ -142,12 +157,41 @@ Deno.serve(async (req) => {
     }
   }
 
+  // ── Paid subscription invoice renewals ──────────────────────────────────
+  if (event.type === "invoice.payment_succeeded") {
+    const invoice = event.data.object as Stripe.Invoice;
+    if (!invoice.subscription) return json({ received: true });
+
+    const subscriptionId = typeof invoice.subscription === "string"
+      ? invoice.subscription
+      : invoice.subscription.id;
+    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+    const profileId = subscription.metadata?.profile_id;
+    const tier = subscription.metadata?.tier;
+    if (!profileId || !tier) return json({ received: true });
+
+    await activateSubscriptionMembership({
+      profileId,
+      tier,
+      customerId: subscription.customer?.toString() || null,
+      subscriptionId: subscription.id,
+      renewalDate: dateFromStripeSeconds(subscription.current_period_end),
+      action: "stripe_invoice_payment_succeeded",
+    });
+    return json({ received: true });
+  }
+
   // ── Payment Intent succeeded (embedded Elements, admin-invite flow) ───────
   if (event.type === "payment_intent.succeeded") {
     const pi = event.data.object as Stripe.PaymentIntent;
     const profileId = pi.metadata?.profile_id;
     const tier = pi.metadata?.tier;
     if (!profileId || !tier) return json({ received: true });
+    let renewalDate: string | null = null;
+    if (pi.metadata?.subscription_id) {
+      const subscription = await stripe.subscriptions.retrieve(pi.metadata.subscription_id);
+      renewalDate = dateFromStripeSeconds(subscription.current_period_end);
+    }
 
     await adminClient
       .from("memberships")
@@ -156,6 +200,7 @@ Deno.serve(async (req) => {
         tier,
         billing_status: "paid",
         quarterly_price: tier === "Sage" ? 550 : 2500,
+        renewal_date: renewalDate,
         updated_at: new Date().toISOString(),
       })
       .eq("profile_id", profileId);

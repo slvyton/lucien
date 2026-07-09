@@ -19,6 +19,11 @@ const TIER_PRICE: Record<string, number> = {
   Emerald: 2500,
 };
 
+function dateFromStripeSeconds(seconds?: number | null) {
+  if (!seconds) return null;
+  return new Date(seconds * 1000).toISOString().slice(0, 10);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -53,6 +58,7 @@ Deno.serve(async (req) => {
   let profileId = paymentIntent.metadata?.profile_id;
   let tier = paymentIntent.metadata?.tier;
   let stripeSubscriptionId: string | null = paymentIntent.metadata?.subscription_id || null;
+  let stripeRenewalDate: string | null = null;
 
   if ((!profileId || !tier) && paymentIntent.invoice) {
     const invoiceId = typeof paymentIntent.invoice === "string"
@@ -66,6 +72,7 @@ Deno.serve(async (req) => {
     profileId = profileId || subscription?.metadata?.profile_id;
     tier = tier || subscription?.metadata?.tier;
     stripeSubscriptionId = stripeSubscriptionId || subscription?.id || null;
+    stripeRenewalDate = dateFromStripeSeconds(subscription?.current_period_end);
   }
 
   if (profileId !== authData.user.id) {
@@ -79,7 +86,7 @@ Deno.serve(async (req) => {
   const now = new Date().toISOString();
   const renewal = new Date();
   renewal.setMonth(renewal.getMonth() + 3);
-  const renewalDate = renewal.toISOString().slice(0, 10);
+  const renewalDate = stripeRenewalDate || renewal.toISOString().slice(0, 10);
   const stripeCustomerId = typeof paymentIntent.customer === "string"
     ? paymentIntent.customer
     : paymentIntent.customer?.id ?? null;
