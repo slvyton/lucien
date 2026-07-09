@@ -4342,7 +4342,7 @@ async function openPaymentPortal(){
   const tierObj = selectedOnboardingTier();
   try{
     if(!tierObj.tier) throw new Error('Please choose Sage or Emerald before continuing.');
-    await openSubscriptionCheckout(tierObj.tier);
+    await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
   }catch(err){
     const msg = err.message || 'Unable to open Stripe Checkout.';
     console.error(err);
@@ -4597,7 +4597,7 @@ async function submitAcceptedOnboarding(){
   if(status) status.textContent = 'Saved. Opening secure payment...';
   toast('Onboarding Saved', `${tier.tier} membership setup saved. Opening payment.`);
   try{
-    await openSubscriptionCheckout(tier.tier);
+    await openLucienPayModal({ mode:'payment', tier:tier.tier });
   }catch(err){
     console.error(err);
     if(status) status.textContent = err.message || 'Saved. Use Continue to Payment to open secure billing.';
@@ -5146,8 +5146,8 @@ async function openLucienPayModal({ mode, tier, isTrial = false }){
       if(modeNote) modeNote.textContent = trialNote;
       if(submitBtn) submitBtn.textContent = isTrial ? 'Confirm & Authorize' : 'Save Card';
     } else {
-      if(modeNote) modeNote.textContent = '';
-      if(submitBtn) submitBtn.textContent = 'Complete Enrollment';
+      if(modeNote) modeNote.textContent = 'Your membership begins now and renews quarterly through Stripe.';
+      if(submitBtn) submitBtn.textContent = 'Start Membership';
     }
 
     _lpmElements = _lpmStripe.elements({ clientSecret: data.client_secret, appearance });
@@ -5160,7 +5160,7 @@ async function openLucienPayModal({ mode, tier, isTrial = false }){
   }catch(err){
     const msg = err.message || 'Unable to load payment form';
     if(statusEl) statusEl.textContent = msg;
-    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Complete Enrollment'; }
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Start Membership'; }
     toast('Payment Error', msg);
   }
 }
@@ -5197,7 +5197,7 @@ async function lpmSubmit(){
 
     if(result.error){
       if(statusEl) statusEl.textContent = result.error.message || 'Payment failed';
-      if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Complete Enrollment'; }
+      if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Start Membership'; }
       return;
     }
 
@@ -5222,14 +5222,14 @@ async function lpmSubmit(){
         const onboardStatus = document.getElementById('onboard-status');
         if(onboardStatus) onboardStatus.textContent = msg;
         if(statusEl) statusEl.textContent = msg;
-        if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Complete Enrollment'; }
+        if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = 'Start Membership'; }
         return;
       }
     }
   }catch(err){
     const msg = err.message || 'Payment failed';
     if(statusEl) statusEl.textContent = msg;
-    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Complete Enrollment'; }
+    if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = _lpmMode === 'setup' ? 'Save Card' : 'Start Membership'; }
   }
 }
 
@@ -5279,7 +5279,7 @@ function closeLpmTerms(){
           </span>
         </label>
       </div>
-      <button class="lpm-submit" id="lpm-submit-btn" onclick="lpmSubmit()" style="margin-top:12px">Complete Enrollment</button>
+      <button class="lpm-submit" id="lpm-submit-btn" onclick="lpmSubmit()" style="margin-top:12px">Start Membership</button>
       <button class="lpm-cancel" onclick="closeLucienPayModal()">Cancel</button>
       <div class="lpm-status" id="lpm-status"></div>
       <div class="lpm-secure">🔒 &nbsp; Secured by Stripe &nbsp;·&nbsp; PCI Compliant</div>
