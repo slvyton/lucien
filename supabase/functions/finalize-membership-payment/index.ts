@@ -50,8 +50,24 @@ Deno.serve(async (req) => {
     return json({ error: `Payment is ${paymentIntent.status}` }, 409);
   }
 
-  const profileId = paymentIntent.metadata?.profile_id;
-  const tier = paymentIntent.metadata?.tier;
+  let profileId = paymentIntent.metadata?.profile_id;
+  let tier = paymentIntent.metadata?.tier;
+  let stripeSubscriptionId: string | null = paymentIntent.metadata?.subscription_id || null;
+
+  if ((!profileId || !tier) && paymentIntent.invoice) {
+    const invoiceId = typeof paymentIntent.invoice === "string"
+      ? paymentIntent.invoice
+      : paymentIntent.invoice.id;
+    const invoice = await stripe.invoices.retrieve(invoiceId, { expand: ["subscription"] });
+    const subscription = typeof invoice.subscription === "string"
+      ? await stripe.subscriptions.retrieve(invoice.subscription)
+      : invoice.subscription;
+
+    profileId = profileId || subscription?.metadata?.profile_id;
+    tier = tier || subscription?.metadata?.tier;
+    stripeSubscriptionId = stripeSubscriptionId || subscription?.id || null;
+  }
+
   if (profileId !== authData.user.id) {
     return json({ error: "Payment does not belong to this member" }, 403);
   }
@@ -101,6 +117,7 @@ Deno.serve(async (req) => {
     new_data: {
       tier,
       payment_intent_id: paymentIntent.id,
+      stripe_subscription_id: stripeSubscriptionId,
       amount: paymentIntent.amount,
       source: "client_finalize",
     },

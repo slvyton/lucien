@@ -113,6 +113,15 @@ Deno.serve(async (req) => {
       return json({ error: "Stripe did not return a subscription payment secret." }, 500);
     }
 
+    await stripe.paymentIntents.update(paymentIntent.id, {
+      metadata: {
+        profile_id: userId,
+        onboarding_id: onboarding?.id || "",
+        tier,
+        subscription_id: subscription.id,
+      },
+    });
+
     await adminClient
       .from("member_onboarding")
       .upsert(
