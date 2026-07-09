@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import Stripe from "https://esm.sh/stripe@14?target=deno";
+import Stripe from "https://esm.sh/stripe@16.12.0?target=deno";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,22 +14,32 @@ function json(body: unknown, status = 200) {
   });
 }
 
-const TIER_PRICES: Record<string, number> = {
-  Sage: 55000,     // $550.00 in cents
-  Emerald: 250000, // $2,500.00 in cents
-};
+function priceIdForTier(tier: string) {
+  const normalized = tier.trim().toLowerCase();
+  if (normalized === "sage") return Deno.env.get("STRIPE_SAGE_PRICE_ID");
+  if (normalized === "emerald") return Deno.env.get("STRIPE_EMERALD_PRICE_ID");
+  return "";
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-  const siteUrl = Deno.env.get("SITE_URL") || Deno.env.get("MEMBER_INVITE_REDIRECT_URL") || "";
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
+  const memberPortalUrl =
+    Deno.env.get("MEMBER_PORTAL_URL") ||
+    Deno.env.get("SITE_URL") ||
+    Deno.env.get("MEMBER_INVITE_REDIRECT_URL") ||
+    "";
 
-  if (!stripeKey) return json({ error: "Missing STRIPE_SECRET_KEY" }, 500);
+  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+    return json({ error: "Missing Supabase environment variables" }, 500);
+  }
+  if (!stripeSecretKey) return json({ error: "Missing STRIPE_SECRET_KEY" }, 500);
+  if (!memberPortalUrl) return json({ error: "Missing MEMBER_PORTAL_URL or SITE_URL" }, 500);
 
   const authHeader = req.headers.get("Authorization") || "";
   const jwt = authHeader.replace(/^Bearer\s+/i, "");
@@ -44,47 +54,74 @@ Deno.serve(async (req) => {
   if (authError || !authData.user) return json({ error: "Invalid token" }, 401);
 
   const userId = authData.user.id;
+  const body = await req.json().catch(() => ({}));
+  const requestedTier = String(body.tier || "").trim();
+
+  const { data: onboarding } = await adminClient
+    .from("member_onboarding")
+    .select("id, email, full_name, selected_tier, payment_status")
+    .eq("profile_id", userId)
+    .maybeSingle();
+
+  const tier = requestedTier || onboarding?.selected_tier || "";
+  if (!["Sage", "Emerald"].includes(tier)) {
+    return json({ error: "Invalid tier. Must be Sage or Emerald." }, 400);
+  }
+  if (String(onboarding?.payment_status || "").toLowerCase() === "paid") {
+    return json({ error: "Membership payment is already marked paid." }, 400);
+  }
+
+  const priceId = priceIdForTier(tier);
+  if (!priceId) return json({ error: `No Stripe price configured for ${tier}.` }, 400);
 
   const { data: profile } = await adminClient
     .from("profiles")
     .select("id, email, display_name")
     .eq("id", userId)
-    .single();
+    .maybeSingle();
 
-  if (!profile) return json({ error: "Profile not found" }, 404);
-
-  const body = await req.json();
-  const tier = String(body.tier || "").trim();
-
-  if (!["Sage", "Emerald"].includes(tier)) {
-    return json({ error: "Invalid tier. Must be Sage or Emerald." }, 400);
-  }
-
-  const stripe = new Stripe(stripeKey, { apiVersion: "2024-04-10" });
-
-  const session = await stripe.checkout.sessions.create({
-    mode: "payment",
-    customer_email: profile.email || authData.user.email || undefined,
-    line_items: [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: `LUCIEN ${tier} Membership`,
-            description: `Quarterly membership — ${tier === "Sage" ? "$550" : "$2,500"} per quarter`,
-          },
-          unit_amount: TIER_PRICES[tier],
-        },
-        quantity: 1,
-      },
-    ],
-    metadata: {
-      profile_id: userId,
-      tier,
-    },
-    success_url: `${siteUrl}?payment=success&tier=${tier}`,
-    cancel_url: `${siteUrl}?payment=cancelled`,
+  const stripe = new Stripe(stripeSecretKey, {
+    apiVersion: "2024-06-20",
+    httpClient: Stripe.createFetchHttpClient(),
   });
 
-  return json({ url: session.url });
+  const successUrl = new URL(memberPortalUrl);
+  successUrl.searchParams.set("payment", "success");
+  successUrl.searchParams.set("tier", tier);
+  successUrl.searchParams.set("session_id", "{CHECKOUT_SESSION_ID}");
+
+  const cancelUrl = new URL(memberPortalUrl);
+  cancelUrl.searchParams.set("payment", "cancelled");
+  cancelUrl.searchParams.set("tier", tier);
+
+  const session = await stripe.checkout.sessions.create({
+    mode: "subscription",
+    customer_email: profile?.email || onboarding?.email || authData.user.email || undefined,
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: successUrl.toString(),
+    cancel_url: cancelUrl.toString(),
+    client_reference_id: userId,
+    subscription_data: {
+      metadata: {
+        profile_id: userId,
+        onboarding_id: onboarding?.id || "",
+        tier,
+      },
+    },
+    metadata: {
+      profile_id: userId,
+      onboarding_id: onboarding?.id || "",
+      tier,
+      display_name: profile?.display_name || onboarding?.full_name || "",
+    },
+  });
+
+  if (onboarding?.id) {
+    await adminClient
+      .from("member_onboarding")
+      .update({ payment_status: "checkout_started", updated_at: new Date().toISOString() })
+      .eq("id", onboarding.id);
+  }
+
+  return json({ url: session.url, id: session.id });
 });

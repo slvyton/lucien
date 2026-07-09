@@ -4340,8 +4340,31 @@ async function openCardSetup(tier, referralCode){
 async function openPaymentPortal(){
   const tierObj = selectedOnboardingTier();
   if(!tierObj.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
-  // Admin-invited members are pre-approved — charge immediately
-  await openLucienPayModal({ mode:'payment', tier: tierObj.tier });
+  await openSubscriptionCheckout(tierObj.tier);
+}
+async function openSubscriptionCheckout(tier){
+  const status = document.getElementById('onboard-status');
+  if(!sb) throw new Error('Payment is unavailable. Refresh and try again.');
+  let session = currentSession;
+  if(!session){
+    const { data } = await sb.auth.getSession();
+    session = data?.session;
+    currentSession = session || null;
+  }
+  if(!session?.access_token) throw new Error('Sign in before continuing to payment.');
+  if(status) status.textContent = `Opening secure Stripe Checkout for ${tier} membership...`;
+  const { data, error } = await sb.functions.invoke('create-checkout-session', { body:{ tier } });
+  if(error){
+    let detail = error.message || 'Unable to open Stripe Checkout.';
+    try{
+      const body = await error.context?.json?.();
+      detail = body?.error || body?.message || detail;
+    }catch(_err){}
+    throw new Error(detail);
+  }
+  if(data?.error) throw new Error(data.error);
+  if(!data?.url) throw new Error('Stripe Checkout did not return a URL.');
+  window.location.href = data.url;
 }
 async function markMembershipPaidAfterPayment(tier, paymentIntentId){
   if(!sb) return;
@@ -4564,7 +4587,7 @@ async function submitAcceptedOnboarding(){
   if(status) status.textContent = 'Saved. Opening secure payment...';
   toast('Onboarding Saved', `${tier.tier} membership setup saved. Opening payment.`);
   try{
-    await openLucienPayModal({ mode:'payment', tier:tier.tier });
+    await openSubscriptionCheckout(tier.tier);
   }catch(err){
     console.error(err);
     if(status) status.textContent = err.message || 'Saved. Use Continue to Payment to open secure billing.';
@@ -4971,6 +4994,7 @@ async function handleStripeReturn(){
   if(params.get('payment') === 'success'){
     const tier = params.get('tier') || 'Sage';
     const paymentIntentId = params.get('payment_intent') || '';
+    const checkoutSessionId = params.get('session_id') || '';
     window.history.replaceState({}, '', window.location.pathname);
     if(!sb){
       openLogin();
@@ -4978,7 +5002,19 @@ async function handleStripeReturn(){
       return true;
     }
     try{
-      await markMembershipPaidAfterPayment(tier, paymentIntentId);
+      if(paymentIntentId){
+        await markMembershipPaidAfterPayment(tier, paymentIntentId);
+      } else if(checkoutSessionId) {
+        toast('Payment Confirmed', 'Your subscription is confirmed. Opening your member portal...');
+        for(let attempt = 0; attempt < 6; attempt++){
+          await loadPortalData();
+          await loadMemberData();
+          if(!memberNeedsPaymentWall()) break;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      } else {
+        await markMembershipPaidAfterPayment(tier, paymentIntentId);
+      }
       await loadPortalData();
       await loadMemberData();
       document.getElementById('accepted-onboarding')?.classList.remove('active');

@@ -36,6 +36,112 @@ Deno.serve(async (req) => {
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
+  async function activateSubscriptionMembership(params: {
+    profileId: string;
+    tier: string;
+    customerId: string | null;
+    subscriptionId?: string | null;
+    action: string;
+  }) {
+    const { profileId, tier, customerId, subscriptionId, action } = params;
+    const normalizedTier = tier === "Emerald" ? "Emerald" : "Sage";
+
+    await adminClient
+      .from("memberships")
+      .update({
+        status: "active",
+        tier: normalizedTier,
+        billing_status: "paid",
+        quarterly_price: normalizedTier === "Sage" ? 550 : 2500,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("profile_id", profileId);
+
+    await adminClient
+      .from("member_onboarding")
+      .update({
+        payment_status: "paid",
+        stripe_customer_id: customerId,
+        selected_tier: normalizedTier,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("profile_id", profileId);
+
+    await adminClient.from("audit_logs").insert({
+      actor_id: null,
+      subject_type: "memberships",
+      subject_id: profileId,
+      action,
+      new_data: { tier: normalizedTier, stripe_customer_id: customerId, stripe_subscription_id: subscriptionId },
+      changed_fields: ["status", "tier", "billing_status", "payment_status"],
+    });
+  }
+
+  // ── Subscription Checkout completed ─────────────────────────────────────
+  if (event.type === "checkout.session.completed") {
+    const session = event.data.object as Stripe.Checkout.Session;
+    const profileId = session.metadata?.profile_id || session.client_reference_id || "";
+    const tier = session.metadata?.tier || "";
+
+    if (session.mode === "subscription") {
+      if (!profileId || !tier) return json({ received: true });
+      await activateSubscriptionMembership({
+        profileId,
+        tier,
+        customerId: session.customer?.toString() || null,
+        subscriptionId: session.subscription?.toString() || null,
+        action: "stripe_subscription_checkout_completed",
+      });
+      return json({ received: true });
+    }
+  }
+
+  // ── Subscription lifecycle updates ───────────────────────────────────────
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+  ) {
+    const subscription = event.data.object as Stripe.Subscription;
+    const profileId = subscription.metadata?.profile_id;
+    const tier = subscription.metadata?.tier;
+    if (!profileId || !tier) return json({ received: true });
+
+    if (event.type === "customer.subscription.deleted" || subscription.status === "canceled") {
+      await adminClient
+        .from("memberships")
+        .update({
+          status: "cancelled",
+          billing_status: "paused",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("profile_id", profileId);
+      return json({ received: true });
+    }
+
+    if (["active", "trialing"].includes(subscription.status)) {
+      await activateSubscriptionMembership({
+        profileId,
+        tier,
+        customerId: subscription.customer?.toString() || null,
+        subscriptionId: subscription.id,
+        action: `stripe_subscription_${subscription.status}`,
+      });
+      return json({ received: true });
+    }
+
+    if (["past_due", "unpaid", "incomplete", "incomplete_expired"].includes(subscription.status)) {
+      await adminClient
+        .from("memberships")
+        .update({
+          billing_status: subscription.status,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("profile_id", profileId);
+      return json({ received: true });
+    }
+  }
+
   // ── Payment Intent succeeded (embedded Elements, admin-invite flow) ───────
   if (event.type === "payment_intent.succeeded") {
     const pi = event.data.object as Stripe.PaymentIntent;
