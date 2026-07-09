@@ -4338,9 +4338,17 @@ async function openCardSetup(tier, referralCode){
   await openLucienPayModal({ mode:'setup', tier: tier || 'Sage' });
 }
 async function openPaymentPortal(){
+  const status = document.getElementById('onboard-status');
   const tierObj = selectedOnboardingTier();
-  if(!tierObj.tier){ toast('Select a Tier', 'Please choose Sage or Emerald before continuing.'); return; }
-  await openSubscriptionCheckout(tierObj.tier);
+  try{
+    if(!tierObj.tier) throw new Error('Please choose Sage or Emerald before continuing.');
+    await openSubscriptionCheckout(tierObj.tier);
+  }catch(err){
+    const msg = err.message || 'Unable to open Stripe Checkout.';
+    console.error(err);
+    if(status) status.textContent = msg;
+    toast('Payment Unavailable', msg);
+  }
 }
 async function openSubscriptionCheckout(tier){
   const status = document.getElementById('onboard-status');
