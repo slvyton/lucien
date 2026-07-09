@@ -4361,15 +4361,17 @@ async function openSubscriptionCheckout(tier){
   }
   if(!session?.access_token) throw new Error('Sign in before continuing to payment.');
   if(status) status.textContent = `Opening secure Stripe Checkout for ${tier} membership...`;
-  const { data, error } = await sb.functions.invoke('create-checkout-session', { body:{ tier } });
-  if(error){
-    let detail = error.message || 'Unable to open Stripe Checkout.';
-    try{
-      const body = await error.context?.json?.();
-      detail = body?.error || body?.message || detail;
-    }catch(_err){}
-    throw new Error(detail);
-  }
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/create-checkout-session`, {
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization':`Bearer ${session.access_token}`,
+      'apikey': SUPABASE_ANON_KEY
+    },
+    body: JSON.stringify({ tier })
+  });
+  const data = await res.json().catch(() => ({}));
+  if(!res.ok) throw new Error(data?.error || data?.message || `Checkout request failed (${res.status}).`);
   if(data?.error) throw new Error(data.error);
   if(!data?.url) throw new Error('Stripe Checkout did not return a URL.');
   window.location.href = data.url;
