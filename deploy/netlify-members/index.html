@@ -4,7 +4,31 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LUCIEN</title>
+<meta name="description" content="Your private LUCIEN access has been prepared.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="LUCIEN">
+<meta property="og:title" content="LUCIEN | Private Invitation">
+<meta property="og:description" content="Your private LUCIEN access has been prepared.">
+<meta property="og:url" content="https://houseoflucien.com/">
+<meta property="og:image" content="https://houseoflucien.com/lucien-preview.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="LUCIEN | Private Invitation">
+<meta name="twitter:description" content="Your private LUCIEN access has been prepared.">
+<meta name="twitter:image" content="https://houseoflucien.com/lucien-preview.png">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Montserrat:wght@200;300;400;500&display=swap" rel="stylesheet">
+<script>
+(function(){
+  var invite = new URLSearchParams(window.location.search).get('invite');
+  if(!invite) return;
+  try{
+    var target = new URL(invite);
+    var safeHost = /\.supabase\.co$/.test(target.hostname);
+    if(safeHost && target.pathname === '/auth/v1/verify'){
+      window.location.replace(target.toString());
+    }
+  }catch(_err){}
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://js.stripe.com/v3/"></script>
 <style>

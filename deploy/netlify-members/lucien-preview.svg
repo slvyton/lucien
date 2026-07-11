@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a1410"/>
+      <stop offset="0.55" stop-color="#14241d"/>
+      <stop offset="1" stop-color="#0f1c16"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="60%">
+      <stop offset="0" stop-color="#c8a86b" stop-opacity="0.14"/>
+      <stop offset="0.55" stop-color="#c8a86b" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#c8a86b" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="48" y="48" width="1104" height="534" fill="none" stroke="#5c4e2f" stroke-width="2"/>
+  <rect x="78" y="78" width="1044" height="474" fill="none" stroke="#2d3a30" stroke-width="1"/>
+  <line x1="172" y1="438" x2="1028" y2="438" stroke="#4b412a" stroke-width="1" stroke-dasharray="14 18"/>
+  <text x="600" y="292" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="86" letter-spacing="18" fill="#c8a86b">LUCIEN</text>
+  <text x="600" y="354" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="22" letter-spacing="9" fill="#c4baa8">PRIVATE INVITATION</text>
+  <text x="600" y="408" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="38" fill="#e8e2d6">Your access has been prepared.</text>
+</svg>

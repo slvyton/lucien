@@ -157,6 +157,17 @@ function withOnboardingParam(url: string) {
   }
 }
 
+function brandedInviteLink(actionLink: string, portalUrl: string) {
+  try {
+    const parsed = new URL(portalUrl);
+    parsed.hash = "";
+    parsed.searchParams.set("invite", actionLink);
+    return parsed.toString();
+  } catch (_err) {
+    return actionLink;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -248,7 +259,8 @@ Deno.serve(async (req) => {
     return json({ error: invite.error?.message || "Unable to generate invite link" }, 500);
   }
 
-  const inviteLink = invite.data.properties.action_link;
+  const actionLink = invite.data.properties.action_link;
+  const inviteLink = brandedInviteLink(actionLink, rawRedirectTo);
   const subject = "Set up your private LUCIEN access";
 
   const { data: nextEventRow } = await adminClient
@@ -287,6 +299,7 @@ Deno.serve(async (req) => {
       ok: true,
       email,
       invite_link: inviteLink,
+      action_link: actionLink,
       delivery: "link",
       invite_id: inviteId || null,
     });
